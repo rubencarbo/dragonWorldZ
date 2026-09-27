@@ -82,8 +82,14 @@ describe('datos', () => {
       const w = c.grid[0].length
       for (const row of c.grid) {
         expect(row.length, id).toBe(w)
-        for (const ch of row) if (ch !== '.') expect(PALETTE[ch], `${id}:${ch}`).toBeTruthy()
+        for (const ch of row) if (ch !== '.') expect((c.palette || PALETTE)[ch], `${id}:${ch}`).toBeTruthy()
       }
+    }
+  })
+  it('el generador produce personajes con cara, contorno y tamaño estable', () => {
+    for (const [id, c] of Object.entries(CHARACTERS)) {
+      expect(c.grid.length, id).toBeGreaterThan(60)
+      expect(Object.values(c.palette), id).toContain('#141020') // contorno
     }
   })
   it('las pistas de música referenciadas existen', () => {

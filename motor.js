@@ -139,21 +139,17 @@ export function spriteToVoxels (grid, palette = PALETTE, { size = 0.1, depth = 2
       if (ch !== '.' && ch !== ' ' && palette[ch]) cells.push({ x, y: h - 1 - y, color: palette[ch] })
     })
   })
+  // un bloque por píxel, estirado en profundidad (sprites grandes = pocas instancias)
   const group = new THREE.Group()
-  const mat = new THREE.MeshLambertMaterial()
-  const mesh = new THREE.InstancedMesh(box, mat, cells.length * depth)
+  const mesh = new THREE.InstancedMesh(box, new THREE.MeshLambertMaterial(), cells.length)
   const m = new THREE.Matrix4()
   const c = new THREE.Color()
-  let i = 0
-  for (const cell of cells) {
-    for (let d = 0; d < depth; d++) {
-      m.makeScale(size, size, size)
-      m.setPosition((cell.x - w / 2 + 0.5) * size, (cell.y + 0.5) * size, (d - depth / 2 + 0.5) * size)
-      mesh.setMatrixAt(i, m)
-      mesh.setColorAt(i, c.set(cell.color))
-      i++
-    }
-  }
+  cells.forEach((cell, i) => {
+    m.makeScale(size, size, size * depth)
+    m.setPosition((cell.x - w / 2 + 0.5) * size, (cell.y + 0.5) * size, 0)
+    mesh.setMatrixAt(i, m)
+    mesh.setColorAt(i, c.set(cell.color))
+  })
   mesh.castShadow = true
   group.add(mesh)
   group.userData.height = h * size
@@ -251,7 +247,7 @@ export function characterModel (id, size = 0.06) {
   // la altura final es la misma aunque el sprite tenga más resolución
   const rows = sprite.grid.length
   const voxel = (16 * size) / rows
-  return spriteToVoxels(sprite.grid, palette, { size: voxel, depth: Math.max(2, Math.round(3 * rows / 16)) })
+  return spriteToVoxels(sprite.grid, palette, { size: voxel, depth: Math.max(2, rows / 6) })
 }
 
 export function characterName (id) {
@@ -290,7 +286,7 @@ export function dragonBallModel (stars = 4, r = 0.18) {
 
 export function propModel (prop) {
   switch (prop.kind) {
-    case 'npc': return characterModel(prop.sprite, 0.055)
+    case 'npc': return characterModel(prop.sprite, 0.078)
     case 'ball': return dragonBallModel(prop.stars || 1)
     case 'cabin': return blocks([
       [0, 0, 0, 0.9, 0.55, 0.8, '#c98e4a'],

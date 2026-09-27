@@ -12,7 +12,7 @@ import {
   findPath, isLocationUnlocked, validateMission
 } from './motor.js'
 import { WORLDS, getWorld, getLocation, MAPS, TILES, TRACKS } from './mundos.js'
-import { CHARACTERS, CHARACTER_GROUPS, PALETTE } from './personajes.js'
+import { CHARACTERS, CHARACTER_GROUPS, PALETTE, buildSprite, SPEC_OPTIONS, EXTRA_LABELS, COLOR_LABELS, DEFAULTS } from './personajes.js'
 import { MINIGAMES } from './minijuegos.js'
 import { game, settings, missions, sprites, go, fb, firebaseEnabled } from './app.js'
 
@@ -178,7 +178,7 @@ export const GlobeView = {
 
     function createPlayer () {
       player = new THREE.Group()
-      const hero = characterModel(game.progress.character, 0.05)
+      const hero = characterModel(game.progress.character, 0.06)
       hero.position.y = 0.15
       const cloud = kintonModel()
       cloud.scale.setScalar(0.7)
@@ -529,6 +529,7 @@ export const LocationView = {
         obj.traverse(o => { o.userData.propId = prop.id })
         obj.userData.baseY = obj.position.y
         obj.userData.bob = prop.kind === 'npc' || prop.kind === 'ball' || prop.kind === 'bean'
+        if (prop.kind === 'npc') obj.rotation.y = Math.PI / 4 // de cara a la cámara
         scene.add(obj)
         propObjs.set(prop.id, { prop, obj })
       }
@@ -548,13 +549,14 @@ export const LocationView = {
       arrow.visible = Boolean(entry)
       if (entry) {
         const p = worldPos(entry.prop.x, entry.prop.y)
-        arrow.position.set(p.x, 1.6, p.z)
+        arrow.position.set(p.x, 1.9, p.z)
       }
     }
 
     function makePlayer () {
       if (player) scene.remove(player)
-      player = characterModel(game.progress.character, 0.055)
+      player = characterModel(game.progress.character, 0.078)
+      player.rotation.y = FACE_CAMERA
       player.castShadow = true
       const p = worldPos(...pos)
       player.position.set(p.x, tileAt(...pos).h - 0.3, p.z)
@@ -642,10 +644,14 @@ export const LocationView = {
       highlight.clear()
     }
 
+    // Los personajes siempre miran a la cámara (estilo "Paper Mario") para
+    // lucir el sprite; solo se voltean a izquierda/derecha según el movimiento.
+    const FACE_CAMERA = Math.PI / 4
     function face (x, y) {
       const a = worldPos(...pos)
       const b = worldPos(x, y)
-      player.rotation.y = Math.atan2(b.x - a.x, b.z - a.z)
+      const screenX = (b.x - a.x) - (b.z - a.z) // proyección sobre el eje derecho de la pantalla
+      if (Math.abs(screenX) > 0.01) player.scale.x = screenX > 0 ? 1 : -1
     }
 
     function stepWalk (dt) {
@@ -728,7 +734,10 @@ export const LocationView = {
       sun.castShadow = true
       sun.shadow.mapSize.set(1024, 1024)
       Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12 })
-      scene.add(sun)
+      // luz de relleno desde la cámara: los sprites (de cara a ella) muestran sus colores reales
+      const fill = new THREE.DirectionalLight('#ffffff', 1.1)
+      fill.position.set(8, 6, 8)
+      scene.add(sun, fill)
 
       buildTiles()
       syncProps()
@@ -748,7 +757,7 @@ export const LocationView = {
         for (const { obj } of propObjs.values()) {
           if (obj.userData.bob) obj.position.y = obj.userData.baseY + Math.abs(Math.sin(t * 2.5 + obj.id)) * 0.05
         }
-        if (arrow?.visible) arrow.position.y = 1.5 + Math.sin(t * 4) * 0.12
+        if (arrow?.visible) arrow.position.y = 1.85 + Math.sin(t * 4) * 0.12
         if (walkQueue.length) pan.multiplyScalar(0.9) // al caminar, la cámara vuelve al personaje
         camTarget.lerp(player.position.clone().add(pan), 0.1)
         camera.position.set(camTarget.x + 8, camTarget.y + 9, camTarget.z + 8)
@@ -883,6 +892,28 @@ export const CharacterEditor = {
           </div>
         </div>
 
+        <details v-if="work.spec" class="design" open>
+          <summary>🧩 Diseño por piezas <small class="muted">(regenera el sprite; los retoques de píxel se pierden)</small></summary>
+          <div class="design-grid">
+            <label v-for="f in DESIGN_FIELDS" :key="f.key">{{ f.label }}
+              <select :value="work.spec[f.key] || f.def" @change="setSpec(f.key, $event.target.value)">
+                <option v-for="o in SPEC_OPTIONS[f.key]" :key="o" :value="o">{{ o }}</option>
+              </select>
+            </label>
+          </div>
+          <div class="extras">
+            <label v-for="x in SPEC_OPTIONS.extras" :key="x" class="chk">
+              <input type="checkbox" :checked="!!work.spec[x]" @change="setSpec(x, $event.target.checked)" /> {{ EXTRA_LABELS[x] }}
+            </label>
+          </div>
+          <div class="colors">
+            <label v-for="k in SPEC_OPTIONS.colors" :key="k" class="col">
+              <input type="color" :value="(work.spec.colors || {})[k] || DEFAULTS[k]" @input="setColor(k, $event.target.value)" />
+              {{ COLOR_LABELS[k] || k }}
+            </label>
+          </div>
+        </details>
+
         <div class="tools">
           <button v-for="t in TOOLS" :key="t.id" class="btn small" :class="{ primary: tool === t.id }" @click="tool = t.id">{{ t.label }}</button>
           <button class="btn small" :disabled="!history.length" @click="undo">↶ Deshacer</button>
@@ -942,7 +973,16 @@ export const CharacterEditor = {
     const imgSize = ref(24)
     const imgColors = ref(12)
 
-    const source = id => sprites.custom[id] || { ...CHARACTERS[id], palette: PALETTE }
+    const DESIGN_FIELDS = [
+      { key: 'build', label: 'Complexión', def: 'kid' },
+      { key: 'head', label: 'Cabeza', def: 'human' },
+      { key: 'hair', label: 'Peinado', def: 'bald' },
+      { key: 'face', label: 'Cara', def: 'happy' },
+      { key: 'outfit', label: 'Ropa', def: 'gi' },
+      { key: 'sleeves', label: 'Mangas', def: 'short' }
+    ]
+    let pixelEdited = false
+    const source = id => sprites.custom[id] || { ...CHARACTERS[id], palette: CHARACTERS[id].palette || PALETTE }
     const displayName = id => characterName(id)
     const gridStrings = () => work.value.grid.map(r => r.join(''))
 
@@ -953,8 +993,10 @@ export const CharacterEditor = {
       work.value = {
         name: s.name || CHARACTERS[id]?.name || id,
         grid: s.grid.map(r => [...r.padEnd(Math.max(...s.grid.map(x => x.length)), '.')]),
-        palette: { ...(s.palette || PALETTE) }
+        palette: { ...(s.palette || PALETTE) },
+        spec: s.spec ? JSON.parse(JSON.stringify(s.spec)) : null
       }
+      pixelEdited = Boolean(s.pixelEdited)
       color.value = Object.keys(work.value.palette)[0]
       history.value = []
       dirty.value = false
@@ -1028,6 +1070,7 @@ export const CharacterEditor = {
       }
       if (tool.value === 'fill') fill(x, y)
       else g[y][x] = tool.value === 'erase' ? '.' : color.value
+      pixelEdited = true
       dirty.value = true
       redraw()
     }
@@ -1047,9 +1090,34 @@ export const CharacterEditor = {
     }
     function onUp () { painting = false }
 
+    // ---------- diseño por piezas ----------
+    let regenTimer
+    function regenerate () {
+      clearTimeout(regenTimer)
+      regenTimer = setTimeout(() => {
+        const r = buildSprite(work.value.spec)
+        work.value.grid = r.grid.map(row => [...row])
+        work.value.palette = r.palette
+        color.value = Object.keys(r.palette)[0]
+        pixelEdited = false
+        dirty.value = true
+        redraw()
+      }, 60)
+    }
+    function setSpec (key, value) {
+      snapshot()
+      work.value.spec[key] = value
+      regenerate()
+    }
+    function setColor (key, hex) {
+      work.value.spec.colors = { ...(work.value.spec.colors || {}), [key]: hex }
+      regenerate()
+    }
+
     // ---------- colores ----------
     function recolor (hex) {
       work.value.palette[color.value] = hex
+      pixelEdited = true
       dirty.value = true
       redraw()
     }
@@ -1068,6 +1136,7 @@ export const CharacterEditor = {
         const r = row.flatMap(ch => [ch, ch])
         return [r, [...r]]
       })
+      pixelEdited = true
       dirty.value = true
       redraw()
     }
@@ -1085,6 +1154,7 @@ export const CharacterEditor = {
       work.value.grid = r.grid.map(row => [...row])
       work.value.palette = r.palette
       color.value = Object.keys(r.palette)[0]
+      pixelEdited = true
       dirty.value = true
       redraw()
     }
@@ -1096,7 +1166,8 @@ export const CharacterEditor = {
       // solo guardamos los colores que se usan
       const used = new Set(grid.join(''))
       const pal = Object.fromEntries(Object.entries(palette).filter(([k]) => used.has(k)))
-      await sprites.save(selId.value, { name, grid, palette: pal })
+      const spec = work.value.spec ? { ...work.value.spec, name } : null
+      await sprites.save(selId.value, { name, grid, palette: pal, spec, pixelEdited })
       dirty.value = false
       msg.value = '✔ Guardado. El juego ya usa esta versión.'
       drawThumbs()
@@ -1108,6 +1179,13 @@ export const CharacterEditor = {
       drawThumbs()
     }
     function copyCode () {
+      // diseño sin retoques → basta con la spec (para CHARACTER_SPECS en personajes.js)
+      if (work.value.spec && !pixelEdited) {
+        const spec = { ...work.value.spec, name: work.value.name }
+        code.value = `  ${selId.value}: ${JSON.stringify(spec, null, 2).replace(/"([a-zA-Z_]+)":/g, '$1:').replace(/"/g, "'").replace(/\n/g, '\n  ')},`
+        navigator.clipboard?.writeText(code.value).then(() => { msg.value = '📋 Copiado: pégalo en CHARACTER_SPECS (personajes.js)' }).catch(() => {})
+        return
+      }
       const grid = gridStrings()
       const used = new Set(grid.join(''))
       const pal = Object.entries(work.value.palette).filter(([k]) => used.has(k))
@@ -1138,7 +1216,7 @@ export const CharacterEditor = {
       if (!scene) return
       if (model) scene.remove(model)
       const rows = work.value.grid.length
-      model = spriteToVoxels(gridStrings(), work.value.palette, { size: 1.6 / rows, depth: Math.max(2, Math.round(3 * rows / 16)) })
+      model = spriteToVoxels(gridStrings(), work.value.palette, { size: 1.6 / rows, depth: Math.max(2, rows / 6) })
       scene.add(model)
     }
     onMounted(() => {
@@ -1169,6 +1247,7 @@ export const CharacterEditor = {
     onBeforeUnmount(() => { cancelAnimationFrame(raf); r3?.dispose() })
 
     return {
+      DESIGN_FIELDS, SPEC_OPTIONS, EXTRA_LABELS, COLOR_LABELS, DEFAULTS, setSpec, setColor,
       TOOLS, groups, selId, work, tool, color, history, dirty, msg, code, board, preview, thumbs, img, imgSize, imgColors,
       sprites, displayName, select, undo, onDown, onMove, onUp, recolor, addColor, double, loadImage, applyImage,
       save, restore, copyCode
