@@ -4,21 +4,13 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host",
-    "build": "vite build",
-    "preview": "vite preview --host",
+    "start": "npx --yes serve -l 5173 .",
     "test": "vitest run"
   },
-  "dependencies": {
-    "firebase": "^12.19.0",
-    "pinia": "^4.0.3",
-    "three": "^0.186.1",
-    "vue": "^3.5.43",
-    "vue-router": "^4.6.4"
-  },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^6.0.9",
-    "vite": "^8.3.1",
-    "vitest": "^5.0.2"
-  }
+    "three": "^0.186.1",
+    "vitest": "^5.0.2",
+    "vue": "^3.5.43"
+  },
+  "description": "DragonWorldZ — juego retro 8 bits inspirado en Dragon Ball (Vue 3 + Three.js + Firebase, sin compilación)"
 }

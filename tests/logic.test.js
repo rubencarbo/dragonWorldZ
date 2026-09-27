@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { rpsWinner, tttWinner, tttAiMove, makeRhymeRound, rhymeKey, RHYMES, followSwaps, randomSwaps } from '../src/minigames/logic.js'
-import { findPath, validateMission, visibleSpawns, isMissionAvailable, resolveInteraction } from '../src/engine/missionLogic.js'
-import { parsePattern, noteToFreq } from '../src/engine/chiptune.js'
-import { SEED_MISSIONS } from '../src/data/missions.js'
-import { MAPS, TILES } from '../src/data/maps.js'
-import { CHARACTERS, PALETTE } from '../src/data/characters.js'
-import { TRACKS } from '../src/data/music.js'
-import { WORLDS } from '../src/data/worlds.js'
+import { rpsWinner, tttWinner, tttAiMove, makeRhymeRound, rhymeKey, RHYMES, followSwaps, randomSwaps } from '../minijuegos.js'
+import { findPath, validateMission, visibleSpawns, isMissionAvailable, resolveInteraction } from '../motor.js'
+import { parsePattern, noteToFreq } from '../motor.js'
+import { SEED_MISSIONS } from '../mundos.js'
+import { MAPS, TILES } from '../mundos.js'
+import { CHARACTERS, PALETTE } from '../personajes.js'
+import { TRACKS } from '../mundos.js'
+import { WORLDS } from '../mundos.js'
 
 const GAMES = ['rps', 'tictactoe', 'rhyme', 'kiseq', 'shell']
 

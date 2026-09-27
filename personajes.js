@@ -1,7 +1,7 @@
-// Sprites pixel-art provisionales (se sustituirán por las imágenes oficiales que
-// se procesan desde el panel Admin → Sprites). Cada sprite es una rejilla de
-// caracteres; cada carácter se mapea a un color de PALETTE y '.' es transparente.
-// El motor los extruye a vóxeles para darles volumen 3D con estética 8 bits.
+// PERSONAJES — sprites pixel-art provisionales (se sustituyen por las imágenes
+// oficiales desde Admin → Sprites). Cada sprite es una rejilla de caracteres;
+// cada carácter es un color de PALETTE y "." es transparente. El motor los
+// extruye a vóxeles para darles volumen 3D con estética 8 bits.
 
 export const PALETTE = {
   k: '#15151f', // pelo negro

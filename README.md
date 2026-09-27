@@ -1,23 +1,45 @@
 # DragonWorldZ 🐉
 
 Prototipo de juego para smartphone inspirado en Dragon Ball (**fan game sin ánimo de lucro**).
-Hecho con **Vue 3 + Pinia + Three.js + Firebase**.
+Hecho con **Vue 3 + Three.js + Firebase**, sin paso de compilación.
 
 El mundo es una **bola 3D** que giras con el dedo. En cada lugar el personaje camina por un
 escenario de vóxeles con estética **retro 8 bits**, habla con NPCs y supera **misiones** cuyos
 combates son **juegos infantiles**.
 
+## Estructura (8 archivos)
+
+| Archivo | Contenido |
+|---|---|
+| `index.html` | Página, importmap con las librerías (Vue y Three.js desde CDN) |
+| `estilos.css` | Estética retro 8 bits: base, componentes, pantallas y minijuegos |
+| `app.js` | Arranque: Firebase, guardado, estado de la partida, misiones, navegación, diálogos y combates |
+| `pantallas.js` | Globo 3D, lugar (tocar para caminar), ajustes y panel Admin |
+| `motor.js` | Renderer retro, vóxeles, modelos 3D, planeta procedural, música chiptune, lógica de misiones y pathfinding |
+| `personajes.js` | Paleta y sprites pixel-art de los personajes |
+| `mundos.js` | Mundos, mapas de cada lugar, misiones base y pistas de música |
+| `minijuegos.js` | Combates: Jan-Ken, tres en raya, rimas, secuencia de ki y sigue la jarra |
+
+**No hace falta compilar.** Los archivos se sirven tal cual. Vue y Three.js se cargan desde CDN
+(versiones fijadas en el `importmap` de `index.html`). Firebase solo se descarga si está configurado.
+
 ## Arrancar
 
+Necesita un servidor estático (los módulos ES no funcionan abriendo el archivo con doble clic):
+
 ```bash
-npm install
-npm run dev      # http://localhost:5173 (usa --host, así que también se abre desde el móvil en la misma red)
-npm test         # tests de lógica (minijuegos, misiones, datos)
-npm run build
+npm start                    # = npx serve -l 5173 .   → http://localhost:5173
+# o bien: python3 -m http.server 5173   ·   o la extensión Live Server de VS Code
 ```
 
+Para abrirlo desde el móvil, usa la IP del ordenador en la misma wifi (`http://192.168.x.x:5173`).
+
+Tests de la lógica (opcional, necesita Node): `npm install && npm test`.
+
+## Firebase (opcional)
+
 Sin configurar nada funciona en **modo local** (guarda en `localStorage`).
-Para usar Firebase copia `.env.example` a `.env.local` y rellena las claves. Después:
+Para usar Firebase, rellena `FIREBASE_CONFIG` al principio de `app.js` y despliega:
 
 ```bash
 firebase deploy --only firestore:rules,hosting
@@ -26,20 +48,13 @@ firebase deploy --only firestore:rules,hosting
 Para publicar misiones desde el panel Admin con Firebase, la cuenta necesita el custom claim
 `admin: true` (se asigna con el Admin SDK: `setCustomUserClaims(uid, { admin: true })`).
 
-## Qué incluye este prototipo
+## Qué incluye
 
-| Pieza | Dónde |
-|---|---|
-| Globo 3D low-poly procedural, mundos (Tierra, Planeta de Kaio, Namek, Tierra del Futuro como línea paralela) | `src/views/GlobeView.vue`, `src/engine/globe.js`, `src/data/worlds.js` |
-| Viaje en la Nube Kinton. **Modo libre** (vuela directo) o **modo dados** (casillas por el camino con eventos aleatorios) | `GlobeView.vue` |
-| Lugares ampliados con mapas de casillas, tocar para caminar (pathfinding) y dado en modo dados | `src/views/LocationView.vue`, `src/data/maps.js` |
-| 4 lugares: Montaña Paoz, Kame House, Capsule Corp, Torre Karin | `src/data/maps.js` |
-| 4 misiones encadenadas | `src/data/missions.js` |
-| Minijuegos de combate: Jan-Ken (piedra, papel o tijera, con pistas del rival), tres en raya, duelo de rimas, secuencia de ki (tipo Simón), sigue la jarra (trile) | `src/minigames/` |
-| Música chiptune original en bucle para cada mundo/lugar + efectos, sintetizada con WebAudio | `src/engine/chiptune.js`, `src/data/music.js` |
-| Personajes como sprites pixel-art extruidos a vóxeles 3D | `src/data/characters.js`, `src/engine/voxel.js` |
-| Panel Admin: editar, validar, publicar, importar y exportar misiones (packs DLC). Convertir imágenes de personajes a sprites 8 bits | `src/views/AdminView.vue` (`#/admin`) |
-| Ajustes: modo de avance, nivel de pixelado, volumen, borrar partida | `src/views/SettingsView.vue` |
+- Globo 3D low-poly con 4 mundos: la Tierra, el Planeta de Kaio, Namek y la Tierra del Futuro (línea temporal paralela).
+- Viaje en la Nube Kinton: **modo libre** o **modo dados** (con casillas-evento), seleccionable en Ajustes.
+- 4 lugares jugables (Montaña Paoz, Kame House, Capsule Corp, Torre Karin) y 4 misiones encadenadas.
+- Música chiptune original en bucle para cada lugar, más efectos de sonido.
+- Panel Admin (`#/admin`): misiones DLC y conversión de imágenes de personajes a sprites 8 bits.
 
 ## Crear misiones (DLC)
 
@@ -61,13 +76,9 @@ extruye a vóxeles 3D.
 
 ## Móvil nativo
 
-Para publicar como app se puede empaquetar con Capacitor:
-
-```bash
-npm i @capacitor/core @capacitor/cli @capacitor/android @capacitor/ios
-npx cap init DragonWorldZ com.dragonworldz.app --web-dir dist
-npm run build && npx cap add android && npx cap sync
-```
+Para publicar como app se puede empaquetar con Capacitor, usando como `webDir` una carpeta con
+los 8 archivos. Para que funcione sin conexión, descarga Vue y Three.js junto a ellos y cambia las
+URLs del `importmap`.
 
 ## Aviso legal
 

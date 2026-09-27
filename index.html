@@ -4,12 +4,33 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0b0b2a" />
+    <title>DragonWorldZ</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
-    <title>DragonWorldZ</title>
+    <link rel="stylesheet" href="estilos.css" />
+    <!-- Librerías desde CDN: sin npm ni compilación. Para cambiar de versión, solo aquí. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "vue": "https://cdn.jsdelivr.net/npm/vue@3.5.43/dist/vue.esm-browser.prod.js",
+          "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js"
+        }
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>
-    <script type="module" src="/src/main.js"></script>
+    <!--
+      Estructura del proyecto:
+        index.html      → esta página
+        estilos.css     → estilos retro
+        app.js          → arranque, Firebase, estado de la partida, navegación
+        pantallas.js    → globo, lugar, ajustes y panel admin
+        motor.js        → 3D (vóxeles, planeta), música chiptune y lógica de misiones
+        personajes.js   → sprites de los personajes
+        mundos.js       → mundos, mapas, misiones y música
+        minijuegos.js   → combates (jan-ken, 3 en raya, rimas, ki, jarras)
+    -->
+    <script type="module" src="app.js"></script>
   </body>
 </html>
