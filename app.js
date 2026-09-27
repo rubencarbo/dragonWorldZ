@@ -4,6 +4,7 @@
 import { createApp, reactive, computed, ref, watch, onMounted } from 'vue'
 import { chiptune, characterName, registerCustomSprites, isMissionAvailable, resolveInteraction, visibleSpawns } from './motor.js'
 import { SEED_MISSIONS, MAPS, getLocation } from './mundos.js'
+import { FORMS } from './personajes.js'
 import { MINIGAMES } from './minijuegos.js'
 import { GlobeView, LocationView, SettingsView, AdminView } from './pantallas.js'
 
@@ -164,6 +165,7 @@ const freshProgress = () => ({
   worldId: 'tierra',
   locationId: 'paoz',
   character: 'goku',
+  forms: {}, // forma actual de cada personaje (p. ej. { goku: 'goku_ssj' })
   team: ['goku'],
   completed: [],
   active: null, // { missionId, step }
@@ -193,6 +195,19 @@ export const game = reactive({
     return visibleSpawns(m, this.progress.active.step)
   },
   itemName (id) { return ITEM_NAMES[id] || id },
+  // sprite que se dibuja para un personaje (según su transformación actual)
+  spriteOf (id = this.progress.character) { return this.progress.forms?.[id] || id },
+  canTransform (id = this.progress.character) { return (FORMS[id] || []).length > 1 },
+  transform () {
+    const id = this.progress.character
+    const forms = FORMS[id]
+    if (!forms) return
+    const next = forms[(forms.indexOf(this.spriteOf(id)) + 1) % forms.length]
+    this.progress.forms = { ...(this.progress.forms || {}), [id]: next }
+    this.save()
+    chiptune.sfx(next === id ? 'bad' : 'ok')
+    this.flash(next === id ? 'Vuelves a tu forma normal' : `¡${characterName(next)}!`)
+  },
 
   async load () {
     const saved = await progressRepo.load()
@@ -373,7 +388,7 @@ const BattleHost = {
     </div>`,
   setup () {
     const info = computed(() => MINIGAMES[game.battle?.step.game])
-    const hero = computed(() => characterName(game.progress.character))
+    const hero = computed(() => characterName(game.spriteOf()))
     const end = won => game.finishBattle(won, MAPS[route.params.id]?.music || 'globo')
     return { game, info, hero, end }
   }

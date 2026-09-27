@@ -178,7 +178,7 @@ export const GlobeView = {
 
     function createPlayer () {
       player = new THREE.Group()
-      const hero = characterModel(game.progress.character, 0.06)
+      const hero = characterModel(game.spriteOf(), 0.06)
       hero.position.y = 0.15
       const cloud = kintonModel()
       cloud.scale.setScalar(0.7)
@@ -439,7 +439,8 @@ export const LocationView = {
           <button v-for="c in game.progress.team" :key="c" class="chip" :class="{ on: c === game.progress.character }"
             @click="switchCharacter(c)">{{ characterName(c) }}</button>
         </div>
-        <div v-if="settings.moveMode === 'dice'" class="dice-box">
+        <button v-if="game.canTransform()" class="btn primary small transform" @click="transform">⚡ Transformarse</button>
+      <div v-if="settings.moveMode === 'dice'" class="dice-box">
           <span>Pasos: {{ moves }}</span>
           <button class="btn primary small" :disabled="moves > 0 || rolling" @click="roll">🎲 {{ rolling ? '...' : 'Tirar' }}</button>
         </div>
@@ -555,7 +556,7 @@ export const LocationView = {
 
     function makePlayer () {
       if (player) scene.remove(player)
-      player = characterModel(game.progress.character, 0.078)
+      player = characterModel(game.spriteOf(), 0.078)
       player.rotation.y = FACE_CAMERA
       player.castShadow = true
       const p = worldPos(...pos)
@@ -563,6 +564,10 @@ export const LocationView = {
       scene.add(player)
     }
 
+    function transform () {
+      game.transform()
+      makePlayer()
+    }
     function switchCharacter (c) {
       game.progress.character = c
       game.save()
@@ -722,6 +727,7 @@ export const LocationView = {
       const aspect = 1
       const zoom = 5.2
       camera = new THREE.OrthographicCamera(-zoom * aspect, zoom * aspect, zoom, -zoom, 0.1, 100)
+      camera.zoom = 1.3 // un poco más cerca: los sprites de los personajes lucen más
       r3.onResize = (w, h) => {
         const a = w / h
         const z = a < 1 ? Math.max(6.5, 4.6 / a) : 5.5
@@ -781,7 +787,7 @@ export const LocationView = {
       detachGestures?.()
       r3?.dispose()
     })
-    return { characterName, stage, back, location, game, available, CHARACTERS, switchCharacter, settings, moves, rolling, roll }
+    return { transform, characterName, stage, back, location, game, available, CHARACTERS, switchCharacter, settings, moves, rolling, roll }
   }
 }
 
@@ -1167,7 +1173,7 @@ export const CharacterEditor = {
       const used = new Set(grid.join(''))
       const pal = Object.fromEntries(Object.entries(palette).filter(([k]) => used.has(k)))
       const spec = work.value.spec ? { ...work.value.spec, name } : null
-      await sprites.save(selId.value, { name, grid, palette: pal, spec, pixelEdited })
+      await sprites.save(selId.value, { name, grid, palette: pal, spec, pixelEdited, ref: CHARACTERS[selId.value]?.ref })
       dirty.value = false
       msg.value = '✔ Guardado. El juego ya usa esta versión.'
       drawThumbs()
@@ -1216,7 +1222,7 @@ export const CharacterEditor = {
       if (!scene) return
       if (model) scene.remove(model)
       const rows = work.value.grid.length
-      model = spriteToVoxels(gridStrings(), work.value.palette, { size: 1.6 / rows, depth: Math.max(2, rows / 6) })
+      model = spriteToVoxels(gridStrings(), work.value.palette, { size: 1.6 / rows, depth: Math.max(1.5, rows / 18) })
       scene.add(model)
     }
     onMounted(() => {

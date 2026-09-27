@@ -16,7 +16,7 @@ combates son **juegos infantiles**.
 | `app.js` | Arranque: Firebase, guardado, estado de la partida, misiones, navegación, diálogos y combates |
 | `pantallas.js` | Globo 3D, lugar (tocar para caminar), ajustes y panel Admin |
 | `motor.js` | Renderer retro, vóxeles, modelos 3D, planeta procedural, música chiptune, lógica de misiones y pathfinding |
-| `personajes.js` | Generador de personajes pixel-art (contorno, sombreado) y la ficha de cada personaje (`CHARACTER_SPECS`) |
+| `personajes.js` | Sprites de los protagonistas y sus transformaciones (`SPRITES`, `FORMS`) y generador de personajes secundarios (`CHARACTER_SPECS`) |
 | `mundos.js` | Mundos, mapas de cada lugar, misiones base y pistas de música |
 | `minijuegos.js` | Combates: Jan-Ken, tres en raya, rimas, secuencia de ki y sigue la jarra |
 

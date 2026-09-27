@@ -4,7 +4,7 @@ import { findPath, validateMission, visibleSpawns, isMissionAvailable, resolveIn
 import { parsePattern, noteToFreq } from '../motor.js'
 import { SEED_MISSIONS } from '../mundos.js'
 import { MAPS, TILES } from '../mundos.js'
-import { CHARACTERS, PALETTE } from '../personajes.js'
+import { CHARACTERS, PALETTE, FORMS } from '../personajes.js'
 import { TRACKS } from '../mundos.js'
 import { WORLDS } from '../mundos.js'
 
@@ -86,10 +86,20 @@ describe('datos', () => {
       }
     }
   })
-  it('el generador produce personajes con cara, contorno y tamaño estable', () => {
-    for (const [id, c] of Object.entries(CHARACTERS)) {
+  it('el generador produce personajes con contorno y tamaño estable', () => {
+    for (const [id, c] of Object.entries(CHARACTERS).filter(([, c]) => c.spec)) {
       expect(c.grid.length, id).toBeGreaterThan(60)
       expect(Object.values(c.palette), id).toContain('#141020') // contorno
+    }
+  })
+  it('protagonistas con sprite real y transformaciones válidas', () => {
+    for (const id of ['goku', 'gohan', 'krilin', 'vegeta', 'piccolo', 'bulma']) {
+      expect(CHARACTERS[id].spec, id).toBeFalsy()
+      expect(CHARACTERS[id].grid.length, id).toBeGreaterThan(40)
+    }
+    for (const [id, forms] of Object.entries(FORMS)) {
+      expect(forms[0]).toBe(id)
+      for (const f of forms) expect(CHARACTERS[f], f).toBeTruthy()
     }
   })
   it('las pistas de música referenciadas existen', () => {

@@ -203,6 +203,185 @@ export function imageToGrid (img, { size = 24, maxColors = 12, alphaCut = 128 } 
   return { grid, palette }
 }
 
+// Extrae un sprite pixel-art de una imagen (captura, sprite escalado, JPG...):
+//   1. detecta el tamaño del "píxel artístico" y su desfase (rejilla original)
+//   2. toma el color central de cada celda
+//   3. quita el fondo rellenando desde los bordes (el contorno oscuro lo frena)
+//   4. reduce la paleta para eliminar ruido de compresión
+// opts: box [x0,y0,x1,y1] · cell (forzar tamaño) · keep [[x,y]...] polígono a
+// conservar (para separar sprites solapados) · tol (tolerancia de fondo) ·
+// maxColors · recolor [[desde, hacia, tolerancia]]
+export function extractSprite (img, opts = {}) {
+  const [x0, y0, x1, y1] = opts.box || [0, 0, img.naturalWidth || img.width, img.naturalHeight || img.height]
+  const W = Math.round(x1 - x0)
+  const H = Math.round(y1 - y0)
+  const cv = document.createElement('canvas')
+  cv.width = W; cv.height = H
+  const ctx = cv.getContext('2d', { willReadFrequently: true })
+  ctx.drawImage(img, x0, y0, W, H, 0, 0, W, H)
+  const d = ctx.getImageData(0, 0, W, H).data
+  const at = (x, y) => { const i = (y * W + x) * 4; return [d[i], d[i + 1], d[i + 2], d[i + 3]] }
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
+
+  // 1) rejilla: bordes fuertes por columna/fila y periodo que mejor los explica
+  const colE = new Float32Array(W); const rowE = new Float32Array(H)
+  for (let y = 0; y < H; y++) {
+    for (let x = 1; x < W; x++) { const e = dist(at(x, y), at(x - 1, y)); if (e > 40) colE[x] += 1 }
+  }
+  for (let x = 0; x < W; x++) {
+    for (let y = 1; y < H; y++) { const e = dist(at(x, y), at(x, y - 1)); if (e > 40) rowE[y] += 1 }
+  }
+  const fit = (E, n, forced) => {
+    const scores = []
+    const candidates = forced ? [forced] : Array.from({ length: 131 }, (_, i) => 1.5 + i * 0.05)
+    for (const s of candidates) {
+      let best = { score: -1, off: 0 }
+      for (let off = 0; off < s; off += 0.25) {
+        let sum = 0; let cnt = 0
+        for (let p = off; p < n; p += s) { const i = Math.round(p); if (i > 0 && i < n) { sum += E[i]; cnt++ } }
+        const score = cnt ? sum / cnt : 0
+        if (score > best.score) best = { score, off }
+      }
+      scores.push({ s, ...best })
+    }
+    const max = Math.max(...scores.map(o => o.score))
+    // el menor periodo casi óptimo (los múltiplos puntúan igual)
+    return scores.find(o => o.score >= max * 0.92)
+  }
+  const gx = fit(colE, W, opts.cell)
+  const gy = fit(rowE, H, opts.cell || gx.s)
+  const s = opts.cell || (gx.s + gy.s) / 2
+  const cols = Math.floor((W - gx.off) / s)
+  const rows = Math.floor((H - gy.off) / s)
+
+  // 2) color de cada celda: mediana del centro
+  const inPoly = (px, py, poly) => {
+    let inside = false
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i]; const [xj, yj] = poly[j]
+      if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside
+    }
+    return inside
+  }
+  const cells = []
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cx = gx.off + (c + 0.5) * s; const cy = gy.off + (r + 0.5) * s
+      if (opts.keep && !inPoly(cx + x0, cy + y0, opts.keep)) { cells.push(null); continue }
+      const samples = []
+      const k = Math.max(0, Math.floor(s * 0.25))
+      for (let dy = -k; dy <= k; dy++) {
+        for (let dx = -k; dx <= k; dx++) {
+          const px = Math.min(W - 1, Math.max(0, Math.round(cx + dx))); const py = Math.min(H - 1, Math.max(0, Math.round(cy + dy)))
+          samples.push(at(px, py))
+        }
+      }
+      if (samples.filter(p => p[3] > 128).length < samples.length / 2) { cells.push(null); continue }
+      const med = [0, 1, 2].map(ch => samples.map(p => p[ch]).sort((a, b) => a - b)[samples.length >> 1])
+      cells.push(med)
+    }
+  }
+
+  // 3) fondo: relleno desde los bordes con colores parecidos a sus vecinos,
+  //    sin atravesar colores oscuros (contornos)
+  const tol = opts.tol ?? 38
+  const lum = p => 0.3 * p[0] + 0.59 * p[1] + 0.11 * p[2]
+  // color de fondo de referencia: mediana del borde del recorte
+  const border = []
+  for (let x = 0; x < W; x += 2) { border.push(at(x, 0), at(x, H - 1)) }
+  for (let y = 0; y < H; y += 2) { border.push(at(0, y), at(W - 1, y)) }
+  const bgRef = [0, 1, 2].map(ch => border.map(p => p[ch]).sort((a, b) => a - b)[border.length >> 1])
+  const bg = new Uint8Array(rows * cols)
+  const queue = []
+  const seed = (r, c) => { const i = r * cols + c; if (!bg[i]) { bg[i] = 1; queue.push(i) } }
+  for (let c = 0; c < cols; c++) { seed(0, c); seed(rows - 1, c) }
+  for (let r = 0; r < rows; r++) { seed(r, 0); seed(r, cols - 1) }
+  while (queue.length) {
+    const i = queue.pop()
+    const r = Math.floor(i / cols); const c = i % cols
+    const p = cells[i]
+    for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nr = r + dr; const nc = c + dc
+      if (nr < 0 || nc < 0 || nr >= rows || nc >= cols) continue
+      const j = nr * cols + nc
+      if (bg[j]) continue
+      const q = cells[j]
+      // parecido al vecino de fondo, o muy claro (brillos, lunas, auras): sigue siendo fondo
+      if (!q || (p && dist(p, q) < tol && lum(q) > 70) || (!p && dist(q, bgRef) < tol * 1.6) || (opts.bright !== false && lum(q) > (opts.brightLum ?? 200))) { bg[j] = 1; queue.push(j) }
+    }
+  }
+  // huecos cerrados (entre brazo y cuerpo) con el color del fondo
+  const bgSamples = []
+  cells.forEach((p, i) => { if (p && bg[i] && bgSamples.length < 400 && (i % 7 === 0)) bgSamples.push(p) })
+  cells.forEach((p, i) => {
+    if (!p || bg[i] || lum(p) < 70) return
+    if (bgSamples.some(b => dist(b, p) < (opts.pocketTol ?? 22))) bg[i] = 1
+  })
+  // islas sueltas (restos de fondo o de otros sprites): solo se queda lo grande
+  {
+    const comp = new Int32Array(rows * cols).fill(-1)
+    const sizes = []
+    for (let i = 0; i < rows * cols; i++) {
+      if (bg[i] || !cells[i] || comp[i] >= 0) continue
+      const id = sizes.length; let n = 0; const st = [i]; comp[i] = id
+      while (st.length) {
+        const k = st.pop(); n++
+        const r = Math.floor(k / cols); const c = k % cols
+        for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nr = r + dr; const nc = c + dc
+          if (nr < 0 || nc < 0 || nr >= rows || nc >= cols) continue
+          const j = nr * cols + nc
+          if (!bg[j] && cells[j] && comp[j] < 0) { comp[j] = id; st.push(j) }
+        }
+      }
+      sizes.push(n)
+    }
+    const big = Math.max(0, ...sizes)
+    for (let i = 0; i < rows * cols; i++) if (comp[i] >= 0 && sizes[comp[i]] < big * (opts.minIsland ?? 0.04)) bg[i] = 1
+  }
+
+  // 4) paleta reducida
+  let fg = []
+  cells.forEach((p, i) => { if (p && !bg[i]) fg.push(p) })
+  if (opts.recolor) {
+    cells.forEach((p, i) => {
+      if (!p || bg[i]) return
+      for (const [from, to, t = 60] of opts.recolor) {
+        const f = hexToRgb(from)
+        if (dist(p, f) < t) { const tt = hexToRgb(to); cells[i] = [0, 1, 2].map(ch => Math.max(0, Math.min(255, p[ch] - f[ch] + tt[ch]))); break }
+      }
+    })
+    fg = cells.filter((p, i) => p && !bg[i])
+  }
+  const centers = quantize(fg, opts.maxColors || 20)
+  const KEYS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  const palette = {}
+  centers.forEach((c, i) => { palette[KEYS[i]] = rgbToHex(c) })
+  let grid = []
+  for (let r = 0; r < rows; r++) {
+    let row = ''
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c
+      row += cells[i] && !bg[i] ? KEYS[nearest(centers, cells[i])] : '.'
+    }
+    grid.push(row)
+  }
+  // recorte de márgenes vacíos
+  const used = grid.map(r => r.search(/[^.]/))
+  const top = used.findIndex(v => v >= 0)
+  const bottom = used.length - 1 - [...used].reverse().findIndex(v => v >= 0)
+  grid = grid.slice(top, bottom + 1)
+  const left = Math.min(...grid.map(r => { const i = r.search(/[^.]/); return i < 0 ? Infinity : i }))
+  const right = Math.max(...grid.map(r => r.replace(/\.+$/, '').length))
+  grid = grid.map(r => r.slice(left, right))
+  return { grid, palette, cell: s }
+}
+
+function hexToRgb (hex) {
+  const n = parseInt(hex.slice(1), 16)
+  return [n >> 16, (n >> 8) & 255, n & 255]
+}
+
 function nearest (centers, p) {
   let best = 0
   let bd = Infinity
@@ -245,9 +424,11 @@ export function characterModel (id, size = 0.06) {
   const sprite = customSprites[id] || CHARACTERS[id] || CHARACTERS.goku
   const palette = sprite.palette || PALETTE
   // la altura final es la misma aunque el sprite tenga más resolución
-  const rows = sprite.grid.length
+  // `ref`: altura de referencia; así un personaje bajo (Krilin) sale más bajo que Goku
+  const rows = sprite.ref || CHARACTERS[id]?.ref || sprite.grid.length
   const voxel = (16 * size) / rows
-  return spriteToVoxels(sprite.grid, palette, { size: voxel, depth: Math.max(2, rows / 6) })
+  // lámina fina: con más grosor, desde arriba se verían las caras superiores del contorno
+  return spriteToVoxels(sprite.grid, palette, { size: voxel, depth: Math.max(1.5, rows / 18) })
 }
 
 export function characterName (id) {
