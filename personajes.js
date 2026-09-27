@@ -484,10 +484,129 @@ export const CHARACTER_SPECS = {
 }
 
 // Sprites de los protagonistas (pixel-art estilo Dragon Ball Z). Goku y sus
-// transformaciones proceden de las imágenes de referencia; Gohan, Krilin,
+// transformaciones (y Goku niño) proceden de las imágenes de referencia; Gohan, Krilin,
 // Vegeta y Piccolo están editados a partir del sprite de Goku (mismo cuerpo,
 // paleta y cabeza redibujada). Bulma es provisional.
 export const SPRITES = {
+  goku_nino: {
+    palette: {a: '#01010b', b: '#414040', c: '#010101', d: '#843d31', e: '#020204', f: '#ef9a56', g: '#090101', h: '#fac49f', i: '#6677b7', j: '#316a9e', k: '#102147', l: '#5d6eb1', m: '#1a0302', n: '#c5795c', o: '#fcd4b6', p: '#472321', q: '#bdc4c6', r: '#36407a', s: '#303767', t: '#2b3770', u: '#05061a', v: '#232e5c', w: '#7b7e7d', x: '#a3604a'},
+    grid: [
+      '.................................eeecccceee.............',
+      '...............................cecbbbbcccc..............',
+      '..............................ccbbbbeeccc...............',
+      '..........................c..eebbbbceeec................',
+      '..........................c.cebbbbcccee.................',
+      '..........................cccpbbeeeccc..................',
+      '..........................ccubbpccccec..................',
+      '.........................ceebbbcccccc...................',
+      '....................cccceeepbbccccccc...eecccc..........',
+      '..................cccbbbbcccbuccccccecccebbbbbccc.......',
+      '................qeabpcccccccbccccccceeubbbbbbbbbbc......',
+      '................ebbeecccccccccccccccubbbbbpceebbbbcc....',
+      '...............cbbcccccccccccccccccbbbbbuuccceeeeeucc...',
+      '..............ccbccccccccccccccccccbbuueccccccccceecec..',
+      '..............cbccccccccccccccccccccccecccccccccec......',
+      '...........ec.cbcccccccceccccpbecccceccccccceecc........',
+      '..ccccceeeccecccccccccccbccccebbccccbccccccccc..........',
+      '...cceeebbbbecccccccccccbpeggebbbccccbeccccec...........',
+      '.....eccccbbbcccccccccccbbcdgccbbcccebpccccc............',
+      '......cccccccbecccccccgcebgxxgccbeggcbbcccceeecc........',
+      '........cccccccccccbcmfpcbchxdcebenmcebpccpbbbeccc......',
+      '.....ccccccecccccccbgnxgcccohxgcbehxccbpccbbbbbbbcc.....',
+      '.ecccuubbbbcccccecebgxgggegcohxeeghcecbecccccccccccc....',
+      '..ecccceeecccccegeebgxxhhgngohxcc.gggcbccccccccceeecc...',
+      '...eeccccccccecgxgcegxnhpqqwphogogxnxgcccccccccc........',
+      '.....ccccccccegxongccgng....nxhhhw.wngcccccccc..........',
+      '.......cccccceghppxgmnnw....hhhhh...pccccce.............',
+      '..cc.....cceccghndmnnnnw...cchhhog..pcccee..............',
+      '..mdm......cccghhppnnhnx...gghhhog..dcccccce............',
+      '.mdfdg..cecbbccnhpnnnhhhhhohhhhhhh.ndgecccccc...........',
+      '.gddfdmcccccccecnnmnnhxhxhhhhhhnhhfxgececccccc..........',
+      '.cgddfdg...ceeeecnnpnhhhhhdhhhhfdhnfcee.................',
+      '..cgddfdg......cccccxhhhon..qnnhhhhhc...................',
+      '...cmddfpc.......ecegxhhhhd.....mohnc...................',
+      '....emddxdcccc.....eggxhhhhx...nohnge...................',
+      '.....cgddnggxmc....cgxmxhhhhnnnhhnce....................',
+      '......cgddgndbbc.aaegnxggnhhhhhhxgc.....................',
+      '.......eggxddgcccarenhonxggpnnngcc......................',
+      '........mbbdceddxgranooonxxmeggcvec.....................',
+      '........aaaeaaaaxxujunddnpxnnnmxasuaa...................',
+      '.......carrliirruxnajehhhhxmnnnxxarusac.................',
+      '.......eaaasiiiitaxnarcohhhhpxnhnarustsac...............',
+      '.......avttuuliiituxnuracooohxhhharltilic...............',
+      '......akjjjrkuiiiirunncjutaaeaaaataltliiae..............',
+      '.....evjjjjjtusiiiitgxnajujjjjjjjtaiiirikke.............',
+      '.....eeggejjjvaiiilivannatkjjjjjvvaiiivivra.............',
+      '.....cmnnxejjtajitillraxnatvkkjjjtalilavtte.............',
+      '.....mnnnnngvtaalrvllltuxnevjjjjjtuiiivasaa.............',
+      '....gdnnhhnnektalvvlllitaxngvjjjkalirivccee.............',
+      '...cgnfhhhhnxasavutilllirgnnekkkavirtllexcc.............',
+      '...cnnfhhhhhxcevvutllliiltuxngvkaiivtllengc.............',
+      '..cghnhhhhhhxccvavrllllllituxnaellvviiteoxg.............',
+      '..exonhhhhhngaaaasillllliiikacqelvusiiseong.............',
+      '.cgnhxxohhxgcavattrrlliiivlluweweariirsaong.............',
+      '.cxfohfpnngcesattttttjllljukrcqcwgarrsecnmgc............',
+      'cghooooncccecastttttttavjjruecqagxwcvvgddnhpc....ggec...',
+      'gnooooonxcec.cesttttttsaaurtveqrccdxeendhhhhngccgnhgcce.',
+      'gnoopdgggccc.eastttttttsecearaqsceecwcgnhhhhdxncgxhgnhgc',
+      'gnnmnnmhooog..aecceaeaaeeeeceececwqeccqgnohdnfncccgxxooc',
+      'gngxnmhhcgfhg...ccwwqqqqqqqbkwqqwewwccgggnddnnggngxoodhc',
+      'gnmxmfhdohgdc...eeaeceaceeceqwwwwwccgg...ggdnggnggdnooxc',
+      'cgdggnnoohdgc...easarrrasseq.weqewwcnofff.fmdgnggnoxhhdc',
+      '.gdgnnoondhxge.cursurirurseqbweewwqgh.o.fffdcencndoooncc',
+      '..cgnnoodoonpeeatruviirttteqwwcaewcffonfxnffccpcnhdhngc.',
+      '..ccgxnooohdfgesttallltirsa.wcevewcf.hhfnfffccecgnngec..',
+      '...ccgnnoodooderrttllltltaqwweaseqcff.ffffffc.ecceccc...',
+      '....eegdnfonxcurrtlllttlre.w.arkc.efffxfxxnfc...........',
+      '......cegdnxccsrrrillrllteqw.arkc.cnffffffffc...........',
+      '.......ccccceattrilllllltcqq.arue..c.fffff.g............',
+      '............astttlllllllteqqqesecqqwgnffffc.............',
+      '............atttllllllltk.wqqesccqqwwcaeec..............',
+      '............attllllllllta.wqqcvecqqqqestse..............',
+      '...........cuttllllllllse.wqqesecqqqqellta..............',
+      '...........csttllllllllscqwqqeaseqqqqallte..............',
+      '..........eatttlllllllltawwqqeurcqqqatllta..............',
+      '..........esjttlllllllltseaqqerre..avlllta..............',
+      '..........atjttllllllllltrvaqesraeaslllltec.............',
+      '.........cetlrtllllllllltrtkeeasttsilllltae.............',
+      '.........ccvjittlllllllttitaavsastlllllltse.............',
+      '........ccavjittllllllvvlisaavrsaslllllttre.............',
+      '........ecsvjlttriiitvvllraasurrvullllltlta.............',
+      '.......ceastjirttttttriitacetarritklllttlte.............',
+      '.......easatjiltttttiiiraccetsurllvvtttllte.............',
+      '......ccstasrillllllliravcccttavtlllillllse.............',
+      '......cattesaliiilillvusaecertsavtlllliltkc.............',
+      '.....eeatiasstriiiirrurtucecattvastiiiiitacc............',
+      '.....aurtiuttturtrrrutrsc.ccavrtsuttiiirkura............',
+      '....currristttaaaaaasssac.ccsarittttttttarlue...........',
+      '....evtttiittttttrrrvake..cerutrittttrrsctlta...........',
+      '....avtttiiktttttrrkusec..earsutiitttrraallte...........',
+      '....avtitrilastttrturtec..easrtaviisaaeerllsc...........',
+      '....avritallvasrsavllsc....eastsusiilkeuiituc...........',
+      '....aarirvvllecaarllrse....cesrtsurrrrurirve............',
+      '.....ekrrttvkeaslltssac....ccarrrsuvsusltvac............',
+      '.....cakttsauvlllttsccc.....cearrrsaasssuae.............',
+      '.....cwwaeaettttttsaec.......eeeaaaccacawwc.............',
+      '.....cpwwccestttsaaee.........cewwwwwqqqxpg.............',
+      '.....gppwqqqacceaec............cppppppppdpg.............',
+      '....cgpnppppqwwwc..............cpppdxxpnnpc.............',
+      '....gpdpxxxxppxpc..............ccppddnppppc.............',
+      '....cpdppppdpxdcc...............gpppdxpxxpgc............',
+      '....eppxxxxpxxpc................cgpppppppxnm............',
+      '....gpppppdpxpc..................cbwwwwmnmmxg...........',
+      '....cxpndngpdpc..................cgcccgnmmbmgc..........',
+      '...ccmnppnpbbcc..................cpppddmmxpxpcc.........',
+      '...cpxpppmnmbe...................cppppdddddpddgc........',
+      '..ccppxxdmmbbc...................gppppppddpxxnnmc.......',
+      '..cwpppppxxpgg...................cbwwwwwpppdddxxmc......',
+      '.cgpdxxxdpxpc....................cccccccwwwqqqqqqc......',
+      '.cppxnxxxxppc..........................eeggeeeeege......',
+      '.cppdnnnddwcc...........................................',
+      '.cwpdddddqcc............................................',
+      '.ccwqqqqqcc.............................................',
+      '..eeeeccec..............................................'
+    ]
+  },
   goku: {
     palette: {a: '#2f3139', b: '#02041a', c: '#020703', d: '#010103', e: '#01030d', f: '#030101', g: '#020207', h: '#000200', i: '#f3c9a8', j: '#080101', k: '#b7312b', l: '#5a6ea9', m: '#0a010c', n: '#0f0102', o: '#cb8055', p: '#fb6535', q: '#ef6845', r: '#453c60', s: '#702e41', t: '#1d0103'},
     grid: [
@@ -1114,12 +1233,14 @@ export const SPRITES = {
 }
 
 const SPRITE_NAMES = {
-  goku: 'Son Goku', goku_ssj: 'Goku Super Saiyan', goku_ssj2: 'Goku Super Saiyan 2', goku_ssj3: 'Goku Super Saiyan 3',
+  goku: 'Son Goku', goku_nino: 'Goku (niño)', goku_ssj: 'Goku Super Saiyan', goku_ssj2: 'Goku Super Saiyan 2', goku_ssj3: 'Goku Super Saiyan 3',
   gohan: 'Son Gohan', gohan_ssj: 'Gohan Super Saiyan', krilin: 'Krilin', vegeta: 'Vegeta', vegeta_ssj: 'Vegeta Super Saiyan',
   piccolo: 'Piccolo', bulma: 'Bulma'
 }
 // altura de referencia (Goku) para mantener las proporciones entre personajes
 export const SPRITE_REF_ROWS = 53
+// sprites a otra resolución: filas que equivalen a la altura de Goku adulto
+const SPRITE_REFS = { goku_nino: 150 }
 
 // Transformaciones disponibles por personaje (el botón ⚡ las recorre en orden)
 export const FORMS = {
@@ -1130,7 +1251,7 @@ export const FORMS = {
 
 // Personajes listos para el juego: { name, grid, palette, ref?, spec? }
 export const CHARACTERS = {
-  ...Object.fromEntries(Object.entries(SPRITES).map(([id, sp]) => [id, { name: SPRITE_NAMES[id] || id, ...sp, ref: SPRITE_REF_ROWS }])),
+  ...Object.fromEntries(Object.entries(SPRITES).map(([id, sp]) => [id, { name: SPRITE_NAMES[id] || id, ...sp, ref: SPRITE_REFS[id] || SPRITE_REF_ROWS }])),
   ...Object.fromEntries(Object.entries(CHARACTER_SPECS).map(([id, spec]) => {
     const { grid, palette } = buildSprite(spec)
     // escala respecto a Goku: el lienzo del generador (SPRITE_H) equivale a su altura
@@ -1140,7 +1261,7 @@ export const CHARACTERS = {
 
 // Grupos para la galería de personajes (Admin → Personajes)
 export const CHARACTER_GROUPS = [
-  { name: 'Protagonistas', ids: ['goku', 'gohan', 'krilin', 'vegeta', 'piccolo', 'bulma'] },
+  { name: 'Protagonistas', ids: ['goku', 'goku_nino', 'gohan', 'krilin', 'vegeta', 'piccolo', 'bulma'] },
   { name: 'Transformaciones', ids: ['goku_ssj', 'goku_ssj2', 'goku_ssj3', 'gohan_ssj', 'vegeta_ssj'] },
   { name: 'Secundarios', ids: ['roshi', 'chichi', 'oolong', 'karin'] },
   { name: 'Rivales', ids: ['dino'] }

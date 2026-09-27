@@ -8,7 +8,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import * as THREE from 'three'
 import {
   createRetroRenderer, attachGestures, pointerNDC, buildPlanet, surfacePoint, latLonToDir, greatCirclePoints, starfield,
-  characterModel, characterName, spriteToVoxels, kintonModel, propModel, treeModel, imageToGrid, chiptune,
+  characterModel, characterName, spriteToVoxels, kintonModel, propModel, treeModel, imageToGrid, extractSprite, chiptune,
   findPath, isLocationUnlocked, validateMission
 } from './motor.js'
 import { WORLDS, getWorld, getLocation, MAPS, TILES, TRACKS } from './mundos.js'
@@ -938,11 +938,12 @@ export const CharacterEditor = {
         <div class="tools">
           <button class="btn small" :disabled="work.grid.length >= 64" @click="double">⤢ Más detalle (×2)</button>
           <label class="btn small file">🖼 Importar imagen<input type="file" accept="image/*" @change="loadImage" /></label>
-          <label v-if="img" class="imgopt">Altura {{ imgSize }}px
+          <label v-if="img" class="chk"><input v-model="imgPixelArt" type="checkbox" @change="applyImage" /> Es pixel-art (detectar rejilla y quitar fondo)</label>
+          <label v-if="img && !imgPixelArt" class="imgopt">Altura {{ imgSize }}px
             <input v-model.number="imgSize" type="range" min="12" max="48" @input="applyImage" />
           </label>
           <label v-if="img" class="imgopt">Colores {{ imgColors }}
-            <input v-model.number="imgColors" type="range" min="4" max="20" @input="applyImage" />
+            <input v-model.number="imgColors" type="range" min="4" max="32" @input="applyImage" />
           </label>
         </div>
 
@@ -977,7 +978,8 @@ export const CharacterEditor = {
     const thumbs = {}
     const img = ref(null)
     const imgSize = ref(24)
-    const imgColors = ref(12)
+    const imgColors = ref(20)
+    const imgPixelArt = ref(true)
 
     const DESIGN_FIELDS = [
       { key: 'build', label: 'Complexión', def: 'kid' },
@@ -1156,7 +1158,9 @@ export const CharacterEditor = {
     function applyImage () {
       if (!img.value) return
       if (!dirty.value || !history.value.length) snapshot()
-      const r = imageToGrid(img.value, { size: imgSize.value, maxColors: imgColors.value })
+      const r = imgPixelArt.value
+        ? extractSprite(img.value, { maxColors: imgColors.value })
+        : imageToGrid(img.value, { size: imgSize.value, maxColors: imgColors.value })
       work.value.grid = r.grid.map(row => [...row])
       work.value.palette = r.palette
       color.value = Object.keys(r.palette)[0]
@@ -1254,7 +1258,7 @@ export const CharacterEditor = {
 
     return {
       DESIGN_FIELDS, SPEC_OPTIONS, EXTRA_LABELS, COLOR_LABELS, DEFAULTS, setSpec, setColor,
-      TOOLS, groups, selId, work, tool, color, history, dirty, msg, code, board, preview, thumbs, img, imgSize, imgColors,
+      TOOLS, groups, selId, work, tool, color, history, dirty, msg, code, board, preview, thumbs, img, imgSize, imgColors, imgPixelArt,
       sprites, displayName, select, undo, onDown, onMove, onUp, recolor, addColor, double, loadImage, applyImage,
       save, restore, copyCode
     }
