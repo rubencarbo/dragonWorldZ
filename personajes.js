@@ -46,6 +46,72 @@ export const CHARACTERS = {
       '.bbbb..bbbb.'
     ]
   },
+  gohan: {
+    name: 'Son Gohan',
+    color: '#7a4bb0',
+    grid: [
+      '............',
+      '...k.kk.k...',
+      '..kkkkkkkk..',
+      '..kkkkkkkk..',
+      '..kssssssk..',
+      '..sesssses..',
+      '..ssssssss..',
+      '...ssmmss...',
+      '..vvvvvvvv..',
+      '.svvvvvvvvs.',
+      '.svvvvvvvvs.',
+      '..rrrrrrrr..',
+      '..vvvvvvvv..',
+      '..vvv..vvv..',
+      '..nnn..nnn..',
+      '............'
+    ]
+  },
+  vegeta: {
+    name: 'Vegeta',
+    color: '#2250b8',
+    grid: [
+      '...k.kk.k...',
+      '..kkkkkkkk..',
+      '..kkkkkkkk..',
+      '..kssssssk..',
+      '..seessees..',
+      '..ssssssss..',
+      '...ssmmss...',
+      '.wwwbbbbwww.',
+      'wwwwwwwwwwww',
+      'bbwwwwwwwwbb',
+      'w.bywwwwyb.w',
+      '..bbbbbbbb..',
+      '..bbbbbbbb..',
+      '..bbb..bbb..',
+      '..www..www..',
+      '.wwww..wwww.'
+    ]
+  },
+  piccolo: {
+    name: 'Piccolo',
+    color: '#46a546',
+    grid: [
+      '....wwww....',
+      '...wwwwww...',
+      '..wwwwwwww..',
+      '..wggggggw..',
+      '..geeggeeg..',
+      '..gggggggg..',
+      '...ggmmgg...',
+      '.wvvvvvvvvw.',
+      'wgvvvvvvvvgw',
+      'wgvvvvvvvvgw',
+      'w.vvvvvvvv.w',
+      'w.bbbbbbbb.w',
+      'w.vvvvvvvv.w',
+      'w.vvv..vvv.w',
+      'w.nnn..nnn.w',
+      'wnnnn..nnnnw'
+    ]
+  },
   krilin: {
     name: 'Krilin',
     color: '#f47b20',
@@ -201,3 +267,10 @@ export const CHARACTERS = {
     ]
   }
 }
+
+// Grupos para la galería de personajes (Admin → Personajes)
+export const CHARACTER_GROUPS = [
+  { name: 'Protagonistas', ids: ['goku', 'gohan', 'krilin', 'vegeta', 'piccolo', 'bulma'] },
+  { name: 'Secundarios', ids: ['roshi', 'chichi', 'oolong', 'karin'] },
+  { name: 'Rivales', ids: ['dino'] }
+]

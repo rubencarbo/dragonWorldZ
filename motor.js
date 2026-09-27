@@ -10,11 +10,15 @@ import { TRACKS } from './mundos.js'
 
 // ============================================================ RENDERER RETRO
 
-export function createRetroRenderer (container, { pixelScale = 3 } = {}) {
-  const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'low-power' })
+// pixelSize = cuántos píxeles físicos de la pantalla ocupa cada píxel del juego.
+//   1 → nítido (resolución nativa) · 2 → retro suave · 3-4 → 8 bits marcado
+// Se tiene en cuenta la densidad de la pantalla (devicePixelRatio), así el
+// aspecto es igual en un móvil con pantalla retina que en un monitor normal.
+export function createRetroRenderer (container, { pixelSize = 2 } = {}) {
+  const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' })
   renderer.setPixelRatio(1)
   renderer.shadowMap.enabled = true
-  renderer.shadowMap.type = THREE.BasicShadowMap
+  renderer.shadowMap.type = THREE.PCFShadowMap
   const canvas = renderer.domElement
   canvas.style.width = '100%'
   canvas.style.height = '100%'
@@ -23,12 +27,17 @@ export function createRetroRenderer (container, { pixelScale = 3 } = {}) {
   canvas.style.touchAction = 'none'
   container.appendChild(canvas)
 
-  const state = { pixelScale, onResize: null }
+  const state = { pixelSize, onResize: null }
+  // límite de densidad para no fundir la GPU de móviles con pantallas 3x
+  const dpr = Math.min(globalThis.devicePixelRatio || 1, 2.5)
 
   function resize () {
     const w = container.clientWidth || 1
     const h = container.clientHeight || 1
-    renderer.setSize(Math.ceil(w / state.pixelScale), Math.ceil(h / state.pixelScale), false)
+    const k = dpr / state.pixelSize
+    renderer.setSize(Math.ceil(w * k), Math.ceil(h * k), false)
+    // con resolución casi nativa el pixelado ya no aporta: suavizado del navegador
+    canvas.style.imageRendering = state.pixelSize <= 1 ? 'auto' : 'pixelated'
     state.onResize?.(w, h)
   }
   const ro = new ResizeObserver(resize)
@@ -38,13 +47,74 @@ export function createRetroRenderer (container, { pixelScale = 3 } = {}) {
   return {
     renderer,
     canvas,
-    set pixelScale (v) { state.pixelScale = v; resize() },
+    set pixelSize (v) { state.pixelSize = v; resize() },
     set onResize (fn) { state.onResize = fn; resize() },
     dispose () {
       ro.disconnect()
       renderer.dispose()
       canvas.remove()
     }
+  }
+}
+
+// Gestos táctiles y de ratón sobre un canvas, estilo Google Maps:
+//   · tocar           → onTap(event)
+//   · arrastrar       → onDrag(dx, dy) en píxeles CSS
+//   · pellizcar/rueda → onZoom(factor)  (>1 acercar, <1 alejar)
+// Devuelve una función para desconectar los eventos.
+export function attachGestures (canvas, { onTap, onDrag, onZoom }) {
+  const pointers = new Map()
+  let moved = 0
+  let pinchDist = 0
+  let multi = false
+
+  const dist = () => {
+    const [a, b] = [...pointers.values()]
+    return Math.hypot(a.x - b.x, a.y - b.y)
+  }
+  function down (e) {
+    try { canvas.setPointerCapture(e.pointerId) } catch {}
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (pointers.size === 1) { moved = 0; multi = false }
+    if (pointers.size === 2) { pinchDist = dist(); multi = true }
+  }
+  function move (e) {
+    const p = pointers.get(e.pointerId)
+    if (!p) return
+    const dx = e.clientX - p.x
+    const dy = e.clientY - p.y
+    p.x = e.clientX
+    p.y = e.clientY
+    if (pointers.size >= 2) {
+      const d = dist()
+      if (pinchDist > 0 && d > 0) onZoom?.(d / pinchDist)
+      pinchDist = d
+      return
+    }
+    moved += Math.abs(dx) + Math.abs(dy)
+    if (moved > 6 && !multi) onDrag?.(dx, dy)
+  }
+  function up (e) {
+    if (!pointers.has(e.pointerId)) return
+    pointers.delete(e.pointerId)
+    if (pointers.size === 0 && !multi && moved <= 6 && e.type === 'pointerup') onTap?.(e)
+    if (pointers.size < 2) pinchDist = 0
+  }
+  function wheel (e) {
+    e.preventDefault()
+    onZoom?.(Math.exp(-e.deltaY * 0.0015))
+  }
+  canvas.addEventListener('pointerdown', down)
+  canvas.addEventListener('pointermove', move)
+  canvas.addEventListener('pointerup', up)
+  canvas.addEventListener('pointercancel', up)
+  canvas.addEventListener('wheel', wheel, { passive: false })
+  return () => {
+    canvas.removeEventListener('pointerdown', down)
+    canvas.removeEventListener('pointermove', move)
+    canvas.removeEventListener('pointerup', up)
+    canvas.removeEventListener('pointercancel', up)
+    canvas.removeEventListener('wheel', wheel)
   }
 }
 
@@ -176,13 +246,16 @@ let customSprites = {}
 export function registerCustomSprites (map) { customSprites = map }
 
 export function characterModel (id, size = 0.06) {
-  const custom = customSprites[id]
-  if (custom) {
-    const scale = (16 * size) / custom.grid.length
-    return spriteToVoxels(custom.grid, custom.palette, { size: scale, depth: 2 })
-  }
-  const ch = CHARACTERS[id] || CHARACTERS.goku
-  return spriteToVoxels(ch.grid, PALETTE, { size, depth: 3 })
+  const sprite = customSprites[id] || CHARACTERS[id] || CHARACTERS.goku
+  const palette = sprite.palette || PALETTE
+  // la altura final es la misma aunque el sprite tenga más resolución
+  const rows = sprite.grid.length
+  const voxel = (16 * size) / rows
+  return spriteToVoxels(sprite.grid, palette, { size: voxel, depth: Math.max(2, Math.round(3 * rows / 16)) })
+}
+
+export function characterName (id) {
+  return customSprites[id]?.name || CHARACTERS[id]?.name || id
 }
 
 export function kintonModel () {
@@ -342,7 +415,7 @@ export function terrainHeight (dir, world) {
 
 export function buildPlanet (world) {
   const r = world.radius
-  const geo = new THREE.IcosahedronGeometry(1, r > 3 ? 12 : 7)
+  const geo = new THREE.IcosahedronGeometry(1, r > 3 ? 20 : 9)
   const pos = geo.attributes.position
   const colors = new Float32Array(pos.count * 3)
   const c = world.colors

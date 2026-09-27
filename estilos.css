@@ -235,3 +235,48 @@ a { color: inherit; text-decoration: none; }
 .shell-table .jar.lift { transform: translateY(-26px); }
 .shell-table .jar .water { position: absolute; left: 50%; bottom: -24px; transform: translateX(-50%); font-size: 20px; }
 
+
+/* ============================================================ CONTROLES DE ZOOM (globo) */
+.globe-view .zoom-ctrl {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.globe-view .zoom-ctrl .btn { width: 40px; height: 40px; justify-content: center; font-size: 14px; padding: 0; }
+
+/* ============================================================ EDITOR DE PERSONAJES */
+.char-editor {
+  display: flex; flex-direction: column; gap: 12px;
+  .group h3 { font-size: 9px; color: var(--yellow); margin: 4px 0 8px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; margin-bottom: 8px; }
+  .char-card {
+    display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 4px; cursor: pointer;
+    background: #1c1c44; border: 2px solid #3a3a7a; color: #fff; font-family: inherit; font-size: 7px; position: relative;
+  }
+  .char-card.on { border-color: var(--yellow); }
+  .char-card canvas { height: 64px; width: auto; }
+  .char-card em { position: absolute; top: 3px; right: 3px; font-style: normal; background: #b4533c; padding: 1px 3px; font-size: 6px; }
+  .editor-body { display: flex; flex-direction: column; gap: 12px; }
+  .editor-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .name { display: flex; align-items: center; gap: 8px; font-size: 9px; }
+  .name input, .code {
+    background: #0b0b2a; color: #fff; border: 2px solid #3a3a7a; padding: 6px; font-family: inherit; font-size: 9px;
+  }
+  .workspace { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+  .canvas-wrap { flex: 1 1 260px; min-width: 0; }
+  .board { image-rendering: pixelated; touch-action: none; cursor: crosshair; max-width: 100%; border: 2px solid #3a3a7a; display: block; }
+  .side { display: flex; flex-direction: column; gap: 6px; align-items: center; flex: 0 0 160px; margin: 0 auto; }
+  .preview3d { width: 160px; height: 200px; border: 2px solid #3a3a7a; }
+  .tools { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .palette { display: flex; gap: 6px; flex-wrap: wrap; }
+  .swatch { width: 28px; height: 28px; border: 2px solid #111; cursor: pointer; box-shadow: 2px 2px 0 #000; }
+  .swatch.on { outline: 3px solid var(--yellow); outline-offset: 1px; }
+  .swatch.add { background: #1c1c44; color: #fff; font-size: 14px; }
+  .recolor { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 8px; }
+  .recolor input { width: 44px; height: 28px; border: none; background: none; }
+  .file { position: relative; overflow: hidden; }
+  .file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .imgopt { display: flex; flex-direction: column; gap: 4px; font-size: 7px; }
+  .code { width: 100%; min-height: 160px; font-family: ui-monospace, monospace; font-size: 11px; color: #9ef09e; user-select: text; }
+  .ok { color: #9ef09e; font-size: 9px; }
+}
+.page .char-editor section.card { align-items: stretch; }

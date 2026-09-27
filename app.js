@@ -2,9 +2,8 @@
 // estado global (ajustes, misiones, sprites, partida), navegación entre
 // pantallas y componentes comunes (diálogos y combates).
 import { createApp, reactive, computed, ref, watch, onMounted } from 'vue'
-import { chiptune, registerCustomSprites, isMissionAvailable, resolveInteraction, visibleSpawns } from './motor.js'
+import { chiptune, characterName, registerCustomSprites, isMissionAvailable, resolveInteraction, visibleSpawns } from './motor.js'
 import { SEED_MISSIONS, MAPS, getLocation } from './mundos.js'
-import { CHARACTERS } from './personajes.js'
 import { MINIGAMES } from './minijuegos.js'
 import { GlobeView, LocationView, SettingsView, AdminView } from './pantallas.js'
 
@@ -108,7 +107,7 @@ const progressRepo = {
 // ============================================================ AJUSTES
 export const settings = reactive({
   moveMode: 'free', // 'free' | 'dice'
-  pixelScale: 3,
+  pixelSize: 1.5, // píxeles de pantalla por píxel de juego (ver createRetroRenderer)
   music: 0.5,
   ...LS.get('settings', {}),
   update (patch) {
@@ -303,7 +302,7 @@ export const game = reactive({
 })
 
 // ============================================================ NAVEGACIÓN
-// Rutas por hash: #/  ·  #/lugar/paoz  ·  #/ajustes  ·  #/admin
+// Rutas por hash: #/  ·  #/lugar/paoz  ·  #/ajustes  ·  #/personajes  ·  #/admin
 export const route = reactive({ name: 'globe', params: {}, path: '/' })
 
 function parseHash () {
@@ -313,6 +312,7 @@ function parseHash () {
   route.params = {}
   if (a === 'lugar' && b) { route.name = 'location'; route.params.id = b } else if (a === 'ajustes') route.name = 'settings'
   else if (a === 'admin') route.name = 'admin'
+  else if (a === 'personajes') route.name = 'characters'
   else route.name = 'globe'
 }
 window.addEventListener('hashchange', parseHash)
@@ -373,7 +373,7 @@ const BattleHost = {
     </div>`,
   setup () {
     const info = computed(() => MINIGAMES[game.battle?.step.game])
-    const hero = computed(() => CHARACTERS[game.progress.character]?.name || 'Goku')
+    const hero = computed(() => characterName(game.progress.character))
     const end = won => game.finishBattle(won, MAPS[route.params.id]?.music || 'globo')
     return { game, info, hero, end }
   }
@@ -395,7 +395,8 @@ const App = {
       <GlobeView v-if="route.name === 'globe'" :key="route.path" />
       <LocationView v-else-if="route.name === 'location'" :key="route.path" :id="route.params.id" />
       <SettingsView v-else-if="route.name === 'settings'" />
-      <AdminView v-else-if="route.name === 'admin'" />
+      <AdminView v-else-if="route.name === 'admin' || route.name === 'characters'" :key="route.name"
+        :initial-tab="route.name === 'characters' ? 'chars' : 'missions'" />
       <BattleHost />
       <DialogBox />
       <transition name="fade"><div v-if="game.toast" class="toast">{{ game.toast }}</div></transition>
@@ -409,7 +410,7 @@ const App = {
       await Promise.all([game.load(), missions.load(), sprites.load()])
       loading.value = false
       // el panel admin no necesita pantalla de título
-      if (route.name === 'admin') started.value = true
+      if (route.name === 'admin' || route.name === 'characters') started.value = true
     })
 
     function start () {

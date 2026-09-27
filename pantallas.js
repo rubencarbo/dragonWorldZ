@@ -2,16 +2,17 @@
 //   · GlobeView     → bola del mundo 3D, selección de lugar y viaje (libre / dados)
 //   · LocationView  → lugar ampliado: tocar para caminar, NPCs, misiones
 //   · SettingsView  → ajustes (modo de avance, pixelado, música, partida)
-//   · AdminView     → editor de misiones DLC y conversor de imágenes a sprites
+//   · CharacterEditor → galería y editor pixel-art de personajes (con vista 3D)
+//   · AdminView     → editor de misiones DLC + editor de personajes
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import * as THREE from 'three'
 import {
-  createRetroRenderer, pointerNDC, buildPlanet, surfacePoint, latLonToDir, greatCirclePoints, starfield,
-  characterModel, kintonModel, propModel, treeModel, imageToGrid, chiptune,
+  createRetroRenderer, attachGestures, pointerNDC, buildPlanet, surfacePoint, latLonToDir, greatCirclePoints, starfield,
+  characterModel, characterName, spriteToVoxels, kintonModel, propModel, treeModel, imageToGrid, chiptune,
   findPath, isLocationUnlocked, validateMission
 } from './motor.js'
 import { WORLDS, getWorld, getLocation, MAPS, TILES, TRACKS } from './mundos.js'
-import { CHARACTERS, PALETTE } from './personajes.js'
+import { CHARACTERS, CHARACTER_GROUPS, PALETTE } from './personajes.js'
 import { MINIGAMES } from './minijuegos.js'
 import { game, settings, missions, sprites, go, fb, firebaseEnabled } from './app.js'
 
@@ -81,8 +82,14 @@ export const GlobeView = {
 
       <div v-if="die" class="die-overlay"><div class="die" :class="{ rolling: die.rolling }">{{ die.value }}</div></div>
 
+      <div class="zoom-ctrl">
+        <button class="btn small" aria-label="Acercar" @click="zoomBy(1.5)">＋</button>
+        <button class="btn small" aria-label="Alejar" @click="zoomBy(1 / 1.5)">－</button>
+        <button class="btn small" aria-label="Centrar en el personaje" @click="recenter">◎</button>
+      </div>
+
       <footer class="hud-bottom">
-        <span class="muted">Arrastra para girar · Toca un lugar</span>
+        <span class="muted">Arrastra · Pellizca para acercar · Toca un lugar</span>
         <span class="mode">Modo: {{ settings.moveMode === 'dice' ? '🎲 Dados' : '🕊 Libre' }}</span>
       </footer>
     </div>`,
@@ -104,7 +111,7 @@ export const GlobeView = {
       'Puar se transforma en nube para volar a tu lado un rato. +10 zenis'
     ]
 
-    let r3, scene, camera, world3, planet, player, raf, refit
+    let r3, scene, camera, world3, planet, player, raf, refit, detachGestures
     let markers = []
     let waypointGroup
     const followQ = new THREE.Quaternion()
@@ -298,28 +305,38 @@ export const GlobeView = {
       })
     }
 
-    // --- Interacción: arrastrar para girar, tocar para seleccionar ---
-    let dragging = null
-    function onDown (e) {
-      dragging = { x: e.clientX, y: e.clientY, moved: 0 }
+    // --- Interacción estilo Google Maps: arrastrar gira, pellizcar/rueda acerca ---
+    let zoom = 1 // 1 = planeta entero en pantalla
+    let maxDist = 17 // distancia de la cámara con zoom 1 (se recalcula al redimensionar)
+    const MAX_ZOOM = 6
+    // zoom máximo = vista regional: siempre se ven ~3 unidades de ancho (varios lugares)
+    let hHalfFov = 0.3
+    const minDist = () => viewWorld.value.radius + Math.max(2.5, 1.6 / Math.tan(hHalfFov))
+    const targetDist = () => Math.max(minDist(), maxDist / zoom)
+    let dragging = false
+    let dragTimer
+
+    function setZoom (z) {
+      // sin pasarse del límite real (si no, al alejar habría "pasos muertos")
+      zoom = THREE.MathUtils.clamp(z, 1, Math.max(1, Math.min(MAX_ZOOM, maxDist / minDist())))
+      if (zoom > 1.05) autoFollow = false
     }
-    function onMove (e) {
-      if (!dragging) return
-      const dx = e.clientX - dragging.x
-      const dy = e.clientY - dragging.y
-      dragging.moved += Math.abs(dx) + Math.abs(dy)
-      dragging.x = e.clientX
-      dragging.y = e.clientY
-      if (dragging.moved > 6) {
-        autoFollow = false
-        const qx = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dx * 0.008)
-        const qy = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), dy * 0.008)
-        world3.quaternion.premultiply(qx).premultiply(qy)
-      }
+    function zoomBy (f) { setZoom(zoom * f) }
+    function recenter () {
+      setZoom(1)
+      if (player?.visible) focusOn(playerDir)
     }
-    function onUp (e) {
-      if (dragging && dragging.moved <= 6) pick(e)
-      dragging = null
+    function onDrag (dx, dy) {
+      autoFollow = false
+      dragging = true
+      clearTimeout(dragTimer)
+      dragTimer = setTimeout(() => { dragging = false }, 1500)
+      // cuanto más cerca, más lento gira (como al desplazar un mapa)
+      const R = viewWorld.value.radius
+      const k = 0.008 * THREE.MathUtils.clamp((camera.position.z - R) / (maxDist - R), 0.06, 1)
+      const qx = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dx * k)
+      const qy = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), dy * k)
+      world3.quaternion.premultiply(qx).premultiply(qy)
     }
     const raycaster = new THREE.Raycaster()
     function pick (e) {
@@ -333,9 +350,9 @@ export const GlobeView = {
     }
 
     onMounted(() => {
-      r3 = createRetroRenderer(stage.value, { pixelScale: settings.pixelScale })
+      r3 = createRetroRenderer(stage.value, { pixelSize: settings.pixelSize })
       scene = new THREE.Scene()
-      camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200)
+      camera = new THREE.PerspectiveCamera(40, 1, 0.05, 200)
       camera.position.set(0, 0, 17)
       r3.onResize = fitCamera
       function fitCamera (w = stage.value.clientWidth, h = stage.value.clientHeight) {
@@ -344,26 +361,26 @@ export const GlobeView = {
         const r = viewWorld.value.radius * 1.25
         const vHalf = THREE.MathUtils.degToRad(camera.fov / 2)
         const hHalf = Math.atan(Math.tan(vHalf) * camera.aspect)
-        camera.position.z = Math.max(r / Math.sin(vHalf), r / Math.sin(hHalf))
+        hHalfFov = Math.min(hHalf, vHalf)
+        maxDist = Math.max(r / Math.sin(vHalf), r / Math.sin(hHalf))
+        camera.position.z = targetDist()
         camera.updateProjectionMatrix()
       }
-      refit = fitCamera
+      refit = () => { zoom = 1; fitCamera() }
       scene.add(new THREE.AmbientLight('#8890c0', 1.2))
       const sun = new THREE.DirectionalLight('#fff4d6', 2.2)
       sun.position.set(6, 8, 10)
       scene.add(sun, starfield())
       buildWorld()
 
-      const c = r3.canvas
-      c.addEventListener('pointerdown', onDown)
-      window.addEventListener('pointermove', onMove)
-      window.addEventListener('pointerup', onUp)
+      detachGestures = attachGestures(r3.canvas, { onTap: pick, onDrag, onZoom: zoomBy })
 
       const t0 = performance.now()
       const loop = () => {
         const t = (performance.now() - t0) / 1000
         if (autoFollow) world3.quaternion.slerp(followQ, 0.08)
-        else if (!dragging) world3.rotateY(0.0008)
+        else if (!dragging && zoom < 1.05) world3.rotateY(0.0008)
+        camera.position.z += (targetDist() - camera.position.z) * 0.15
         for (const m of markers) {
           m.userData.beacon.rotation.y = t * 2
           m.userData.beacon.position.y += Math.sin(t * 3) * 0.002
@@ -378,11 +395,10 @@ export const GlobeView = {
 
     onBeforeUnmount(() => {
       cancelAnimationFrame(raf)
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
+      detachGestures?.()
       r3?.dispose()
     })
-    return { stage, WORLDS, viewWorld, switchWorld, game, balls, selected, unlocked, requiredTitle, isHere, enter, settings, traveling, flyTo, rollAndMove, transit, die }
+    return { zoomBy, recenter, stage, WORLDS, viewWorld, switchWorld, game, balls, selected, unlocked, requiredTitle, isHere, enter, settings, traveling, flyTo, rollAndMove, transit, die }
   }
 }
 
@@ -421,7 +437,7 @@ export const LocationView = {
       <footer class="hud-bottom">
         <div class="team">
           <button v-for="c in game.progress.team" :key="c" class="chip" :class="{ on: c === game.progress.character }"
-            @click="switchCharacter(c)">{{ CHARACTERS[c]?.name || c }}</button>
+            @click="switchCharacter(c)">{{ characterName(c) }}</button>
         </div>
         <div v-if="settings.moveMode === 'dice'" class="dice-box">
           <span>Pasos: {{ moves }}</span>
@@ -661,11 +677,21 @@ export const LocationView = {
     }
 
     const raycaster = new THREE.Raycaster()
-    let down = null
-    function onDown (e) { down = { x: e.clientX, y: e.clientY } }
-    function onUp (e) {
-      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 10) { down = null; return }
-      down = null
+    // arrastrar desplaza la vista (vuelve al personaje cuando camina); pellizcar acerca
+    const pan = new THREE.Vector3()
+    let detachGestures
+    function onDrag (dx, dy) {
+      const k = 0.02 / camera.zoom
+      // ejes de pantalla proyectados al suelo en la vista isométrica
+      pan.x += (-dx - dy) * k * 0.7
+      pan.z += (dx - dy) * k * 0.7
+      pan.clampLength(0, Math.max(W, H) / 2)
+    }
+    function onZoom (f) {
+      camera.zoom = THREE.MathUtils.clamp(camera.zoom * f, 0.6, 3)
+      camera.updateProjectionMatrix()
+    }
+    function onTap (e) {
       if (game.dialog || game.battle || walkQueue.length) return
       raycaster.setFromCamera(pointerNDC(e, r3.canvas), camera)
       const objs = [...[...propObjs.values()].map(v => v.obj), tileMesh]
@@ -684,7 +710,7 @@ export const LocationView = {
         go('/')
         return
       }
-      r3 = createRetroRenderer(stage.value, { pixelScale: settings.pixelScale })
+      r3 = createRetroRenderer(stage.value, { pixelSize: settings.pixelSize })
       scene = new THREE.Scene()
       scene.background = new THREE.Color(props.id === 'karin' ? '#8fc8ff' : '#79c7ff')
       const aspect = 1
@@ -700,7 +726,7 @@ export const LocationView = {
       const sun = new THREE.DirectionalLight('#fff4d6', 2)
       sun.position.set(-6, 12, 8)
       sun.castShadow = true
-      sun.shadow.mapSize.set(512, 512)
+      sun.shadow.mapSize.set(1024, 1024)
       Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12 })
       scene.add(sun)
 
@@ -708,8 +734,7 @@ export const LocationView = {
       syncProps()
       makePlayer()
 
-      r3.canvas.addEventListener('pointerdown', onDown)
-      r3.canvas.addEventListener('pointerup', onUp)
+      detachGestures = attachGestures(r3.canvas, { onTap, onDrag, onZoom })
 
       let last = performance.now()
       let t = 0
@@ -724,7 +749,8 @@ export const LocationView = {
           if (obj.userData.bob) obj.position.y = obj.userData.baseY + Math.abs(Math.sin(t * 2.5 + obj.id)) * 0.05
         }
         if (arrow?.visible) arrow.position.y = 1.5 + Math.sin(t * 4) * 0.12
-        camTarget.lerp(player.position, 0.1)
+        if (walkQueue.length) pan.multiplyScalar(0.9) // al caminar, la cámara vuelve al personaje
+        camTarget.lerp(player.position.clone().add(pan), 0.1)
         camera.position.set(camTarget.x + 8, camTarget.y + 9, camTarget.z + 8)
         camera.lookAt(camTarget)
         r3.renderer.render(scene, camera)
@@ -743,9 +769,10 @@ export const LocationView = {
 
     onBeforeUnmount(() => {
       cancelAnimationFrame(raf)
+      detachGestures?.()
       r3?.dispose()
     })
-    return { stage, back, location, game, available, CHARACTERS, switchCharacter, settings, moves, rolling, roll }
+    return { characterName, stage, back, location, game, available, CHARACTERS, switchCharacter, settings, moves, rolling, roll }
   }
 }
 
@@ -773,11 +800,12 @@ export const SettingsView = {
 
       <section class="card">
         <h2>Imagen y sonido</h2>
-        <label class="row">Píxeles (estilo 8 bits)
-          <select :value="settings.pixelScale" @change="settings.update({ pixelScale: Number($event.target.value) })">
-            <option :value="2">Fino</option>
-            <option :value="3">Retro</option>
-            <option :value="4">Muy retro</option>
+        <label class="row">Resolución
+          <select :value="settings.pixelSize" @change="settings.update({ pixelSize: Number($event.target.value) })">
+            <option :value="1">HD (nítido)</option>
+            <option :value="1.5">Alta · retro sutil</option>
+            <option :value="2">Media · retro suave</option>
+            <option :value="3">Baja · 8 bits clásico</option>
           </select>
         </label>
         <label class="row">Música
@@ -789,6 +817,7 @@ export const SettingsView = {
         <h2>Partida</h2>
         <p class="muted">Guardado {{ firebaseEnabled ? 'en la nube (Firebase)' : 'en este dispositivo' }}.</p>
         <button class="btn danger" @click="reset">Borrar progreso</button>
+        <a href="#/personajes" class="btn">🎨 Personajes</a>
         <a href="#/admin" class="btn">🛠 Panel Admin</a>
       </section>
     </div>`,
@@ -801,8 +830,357 @@ export const SettingsView = {
 }
 
 
+// ============================================================ EDITOR DE PERSONAJES
+// Galería de personajes + editor pixel-art con vista previa 3D en vóxeles.
+// Los cambios se guardan como sprites personalizados (localStorage/Firestore)
+// y el juego los usa al momento. "Copiar código" genera el bloque para pegar
+// en personajes.js y dejarlo como versión definitiva.
+const EXTRA_KEYS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+
+function drawSprite (canvas, grid, palette, scale = 6) {
+  if (!canvas) return
+  const w = Math.max(...grid.map(r => r.length))
+  canvas.width = w * scale
+  canvas.height = grid.length * scale
+  const ctx = canvas.getContext('2d')
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  grid.forEach((row, y) => [...row].forEach((ch, x) => {
+    if (!palette[ch]) return
+    ctx.fillStyle = palette[ch]
+    ctx.fillRect(x * scale, y * scale, scale, scale)
+  }))
+}
+
+export const CharacterEditor = {
+  template: `
+    <div class="char-editor">
+      <section class="card gallery">
+        <div v-for="g in groups" :key="g.name" class="group">
+          <h3>{{ g.name }}</h3>
+          <div class="cards">
+            <button v-for="id in g.ids" :key="id" class="char-card" :class="{ on: id === selId }" @click="select(id)">
+              <canvas :ref="el => { if (el) thumbs[id] = el }" class="pix" />
+              <span>{{ displayName(id) }}</span>
+              <em v-if="sprites.custom[id]">editado</em>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card editor-body">
+        <div class="editor-top">
+          <label class="name">Nombre <input v-model="work.name" @input="dirty = true" /></label>
+          <small class="muted">{{ work.grid[0]?.length }}×{{ work.grid.length }} px</small>
+        </div>
+
+        <div class="workspace">
+          <div class="canvas-wrap">
+            <canvas ref="board" class="board" @pointerdown="onDown" @pointermove="onMove" @pointerup="onUp" @pointerleave="onUp" />
+          </div>
+          <div class="side">
+            <div ref="preview" class="preview3d" />
+            <small class="muted">Vista 3D (así se ve en el juego)</small>
+          </div>
+        </div>
+
+        <div class="tools">
+          <button v-for="t in TOOLS" :key="t.id" class="btn small" :class="{ primary: tool === t.id }" @click="tool = t.id">{{ t.label }}</button>
+          <button class="btn small" :disabled="!history.length" @click="undo">↶ Deshacer</button>
+        </div>
+
+        <div class="palette">
+          <button v-for="(hex, key) in work.palette" :key="key" class="swatch" :class="{ on: color === key }"
+            :style="{ background: hex }" :title="hex" @click="color = key; if (tool === 'erase' || tool === 'pick') tool = 'paint'" />
+          <button class="swatch add" title="Añadir color" @click="addColor">＋</button>
+        </div>
+        <label class="recolor">Color seleccionado
+          <input type="color" :value="work.palette[color]" @input="recolor($event.target.value)" />
+          <small class="muted">Cambiarlo recolorea todos sus píxeles (ideal para cambiar el color del traje)</small>
+        </label>
+
+        <div class="tools">
+          <button class="btn small" :disabled="work.grid.length >= 64" @click="double">⤢ Más detalle (×2)</button>
+          <label class="btn small file">🖼 Importar imagen<input type="file" accept="image/*" @change="loadImage" /></label>
+          <label v-if="img" class="imgopt">Altura {{ imgSize }}px
+            <input v-model.number="imgSize" type="range" min="12" max="48" @input="applyImage" />
+          </label>
+          <label v-if="img" class="imgopt">Colores {{ imgColors }}
+            <input v-model.number="imgColors" type="range" min="4" max="20" @input="applyImage" />
+          </label>
+        </div>
+
+        <div class="tools">
+          <button class="btn primary" :disabled="!dirty" @click="save">💾 Guardar</button>
+          <button class="btn" :disabled="!dirty" @click="select(selId)">Descartar</button>
+          <button v-if="sprites.custom[selId]" class="btn danger" @click="restore">↺ Original</button>
+          <button class="btn" @click="copyCode">📋 Copiar código</button>
+        </div>
+        <p v-if="msg" class="ok">{{ msg }}</p>
+        <textarea v-if="code" class="code" readonly :value="code" />
+      </section>
+    </div>`,
+  setup () {
+    const TOOLS = [
+      { id: 'paint', label: '✏️ Pintar' },
+      { id: 'erase', label: '🧽 Borrar' },
+      { id: 'fill', label: '🪣 Rellenar' },
+      { id: 'pick', label: '💧 Cuentagotas' }
+    ]
+    const groups = CHARACTER_GROUPS
+    const selId = ref('goku')
+    const work = ref({ name: '', grid: [[]], palette: {} })
+    const tool = ref('paint')
+    const color = ref('o')
+    const history = ref([])
+    const dirty = ref(false)
+    const msg = ref('')
+    const code = ref('')
+    const board = ref(null)
+    const preview = ref(null)
+    const thumbs = {}
+    const img = ref(null)
+    const imgSize = ref(24)
+    const imgColors = ref(12)
+
+    const source = id => sprites.custom[id] || { ...CHARACTERS[id], palette: PALETTE }
+    const displayName = id => characterName(id)
+    const gridStrings = () => work.value.grid.map(r => r.join(''))
+
+    function select (id) {
+      const s = source(id)
+      selId.value = id
+      // solo los colores que usa el sprite + la paleta base para poder pintar
+      work.value = {
+        name: s.name || CHARACTERS[id]?.name || id,
+        grid: s.grid.map(r => [...r.padEnd(Math.max(...s.grid.map(x => x.length)), '.')]),
+        palette: { ...(s.palette || PALETTE) }
+      }
+      color.value = Object.keys(work.value.palette)[0]
+      history.value = []
+      dirty.value = false
+      code.value = ''
+      msg.value = ''
+      img.value = null
+      redraw()
+    }
+
+    // ---------- lienzo ----------
+    let cell = 16
+    function redraw () {
+      nextTick(() => {
+        const c = board.value
+        if (!c) return
+        const g = work.value.grid
+        const cols = g[0].length
+        const maxW = Math.min(c.parentElement.clientWidth || 320, 420)
+        cell = Math.max(4, Math.floor(maxW / cols))
+        c.width = cols * cell
+        c.height = g.length * cell
+        const ctx = c.getContext('2d')
+        g.forEach((row, y) => row.forEach((ch, x) => {
+          const hex = work.value.palette[ch]
+          ctx.fillStyle = hex || (((x + y) % 2) ? '#2a2a3a' : '#33334a')
+          ctx.fillRect(x * cell, y * cell, cell, cell)
+        }))
+        if (cell >= 8) {
+          ctx.strokeStyle = '#ffffff14'
+          for (let x = 0; x <= cols; x++) { ctx.beginPath(); ctx.moveTo(x * cell + 0.5, 0); ctx.lineTo(x * cell + 0.5, c.height); ctx.stroke() }
+          for (let y = 0; y <= g.length; y++) { ctx.beginPath(); ctx.moveTo(0, y * cell + 0.5); ctx.lineTo(c.width, y * cell + 0.5); ctx.stroke() }
+        }
+        schedulePreview()
+      })
+    }
+    function snapshot () {
+      history.value.push(JSON.stringify(work.value))
+      if (history.value.length > 50) history.value.shift()
+    }
+    function undo () {
+      const prev = history.value.pop()
+      if (!prev) return
+      work.value = JSON.parse(prev)
+      dirty.value = true
+      redraw()
+    }
+    function cellAt (e) {
+      const r = board.value.getBoundingClientRect()
+      const x = Math.floor((e.clientX - r.left) / r.width * work.value.grid[0].length)
+      const y = Math.floor((e.clientY - r.top) / r.height * work.value.grid.length)
+      return work.value.grid[y]?.[x] !== undefined ? [x, y] : null
+    }
+    function fill (x, y) {
+      const g = work.value.grid
+      const from = g[y][x]
+      if (from === color.value) return
+      const stack = [[x, y]]
+      while (stack.length) {
+        const [cx, cy] = stack.pop()
+        if (g[cy]?.[cx] !== from) continue
+        g[cy][cx] = color.value
+        stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1])
+      }
+    }
+    function apply (p) {
+      const [x, y] = p
+      const g = work.value.grid
+      if (tool.value === 'pick') {
+        if (g[y][x] !== '.') { color.value = g[y][x]; tool.value = 'paint' }
+        return
+      }
+      if (tool.value === 'fill') fill(x, y)
+      else g[y][x] = tool.value === 'erase' ? '.' : color.value
+      dirty.value = true
+      redraw()
+    }
+    let painting = false
+    function onDown (e) {
+      const p = cellAt(e)
+      if (!p) return
+      if (tool.value !== 'pick') snapshot()
+      painting = tool.value === 'paint' || tool.value === 'erase'
+      try { board.value.setPointerCapture(e.pointerId) } catch {}
+      apply(p)
+    }
+    function onMove (e) {
+      if (!painting) return
+      const p = cellAt(e)
+      if (p) apply(p)
+    }
+    function onUp () { painting = false }
+
+    // ---------- colores ----------
+    function recolor (hex) {
+      work.value.palette[color.value] = hex
+      dirty.value = true
+      redraw()
+    }
+    function addColor () {
+      const key = [...EXTRA_KEYS, ...'abcdefghijklmnopqrstuvwxyz'].find(k => !work.value.palette[k])
+      if (!key) return
+      work.value.palette[key] = '#ffffff'
+      color.value = key
+      tool.value = 'paint'
+    }
+
+    // ---------- resolución e imagen ----------
+    function double () {
+      snapshot()
+      work.value.grid = work.value.grid.flatMap(row => {
+        const r = row.flatMap(ch => [ch, ch])
+        return [r, [...r]]
+      })
+      dirty.value = true
+      redraw()
+    }
+    function loadImage (e) {
+      const file = e.target.files[0]
+      if (!file) return
+      const im = new Image()
+      im.onload = () => { img.value = im; applyImage() }
+      im.src = URL.createObjectURL(file)
+    }
+    function applyImage () {
+      if (!img.value) return
+      if (!dirty.value || !history.value.length) snapshot()
+      const r = imageToGrid(img.value, { size: imgSize.value, maxColors: imgColors.value })
+      work.value.grid = r.grid.map(row => [...row])
+      work.value.palette = r.palette
+      color.value = Object.keys(r.palette)[0]
+      dirty.value = true
+      redraw()
+    }
+
+    // ---------- guardar / exportar ----------
+    async function save () {
+      const { name, palette } = work.value
+      const grid = gridStrings()
+      // solo guardamos los colores que se usan
+      const used = new Set(grid.join(''))
+      const pal = Object.fromEntries(Object.entries(palette).filter(([k]) => used.has(k)))
+      await sprites.save(selId.value, { name, grid, palette: pal })
+      dirty.value = false
+      msg.value = '✔ Guardado. El juego ya usa esta versión.'
+      drawThumbs()
+    }
+    async function restore () {
+      if (!confirm('¿Volver al sprite original?')) return
+      await sprites.remove(selId.value)
+      select(selId.value)
+      drawThumbs()
+    }
+    function copyCode () {
+      const grid = gridStrings()
+      const used = new Set(grid.join(''))
+      const pal = Object.entries(work.value.palette).filter(([k]) => used.has(k))
+      code.value = `  ${selId.value}: {\n    name: ${JSON.stringify(work.value.name)},\n` +
+        `    palette: { ${pal.map(([k, v]) => `${/^[a-z]$/i.test(k) ? k : `'${k}'`}: '${v}'`).join(', ')} },\n` +
+        `    grid: [\n${grid.map(r => `      '${r}'`).join(',\n')}\n    ]\n  },`
+      navigator.clipboard?.writeText(code.value).then(() => { msg.value = '📋 Copiado: pégalo en personajes.js' }).catch(() => {})
+    }
+
+    function drawThumbs () {
+      nextTick(() => {
+        for (const g of groups) {
+          for (const id of g.ids) {
+            const s = source(id)
+            drawSprite(thumbs[id], s.grid, s.palette || PALETTE, Math.max(2, Math.round(64 / s.grid.length)))
+          }
+        }
+      })
+    }
+
+    // ---------- vista previa 3D ----------
+    let r3, scene, camera, model, raf, pvTimer
+    function schedulePreview () {
+      clearTimeout(pvTimer)
+      pvTimer = setTimeout(buildPreview, 120)
+    }
+    function buildPreview () {
+      if (!scene) return
+      if (model) scene.remove(model)
+      const rows = work.value.grid.length
+      model = spriteToVoxels(gridStrings(), work.value.palette, { size: 1.6 / rows, depth: Math.max(2, Math.round(3 * rows / 16)) })
+      scene.add(model)
+    }
+    onMounted(() => {
+      select(selId.value)
+      drawThumbs()
+      r3 = createRetroRenderer(preview.value, { pixelSize: 1 })
+      scene = new THREE.Scene()
+      scene.background = new THREE.Color('#1c1c44')
+      camera = new THREE.PerspectiveCamera(35, 1, 0.1, 50)
+      camera.position.set(0, 1.1, 3.4)
+      camera.lookAt(0, 0.8, 0)
+      r3.onResize = (w, h) => { camera.aspect = w / h; camera.updateProjectionMatrix() }
+      scene.add(new THREE.HemisphereLight('#ffffff', '#445', 2))
+      const sun = new THREE.DirectionalLight('#fff4d6', 1.5)
+      sun.position.set(2, 3, 4)
+      scene.add(sun)
+      const floor = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.05, 24), new THREE.MeshLambertMaterial({ color: '#5cb85c' }))
+      floor.position.y = -0.025
+      scene.add(floor)
+      buildPreview()
+      const loop = () => {
+        if (model) model.rotation.y += 0.015
+        r3.renderer.render(scene, camera)
+        raf = requestAnimationFrame(loop)
+      }
+      loop()
+    })
+    onBeforeUnmount(() => { cancelAnimationFrame(raf); r3?.dispose() })
+
+    return {
+      TOOLS, groups, selId, work, tool, color, history, dirty, msg, code, board, preview, thumbs, img, imgSize, imgColors,
+      sprites, displayName, select, undo, onDown, onMove, onUp, recolor, addColor, double, loadImage, applyImage,
+      save, restore, copyCode
+    }
+  }
+}
+
+
 // ============================================================ ADMIN
 export const AdminView = {
+  components: { CharacterEditor },
+  props: { initialTab: { type: String, default: 'missions' } },
   template: `
     <div class="page admin">
       <header class="page-head">
@@ -819,7 +1197,7 @@ export const AdminView = {
 
       <nav class="tabs">
         <button class="chip" :class="{ on: tab === 'missions' }" @click="tab = 'missions'">Misiones (DLC)</button>
-        <button class="chip" :class="{ on: tab === 'sprites' }" @click="tab = 'sprites'">Sprites</button>
+        <button class="chip" :class="{ on: tab === 'chars' }" @click="tab = 'chars'">🎨 Personajes</button>
       </nav>
 
       <!-- ===================== MISIONES ===================== -->
@@ -876,41 +1254,11 @@ export const AdminView = {
         </div>
       </section>
 
-      <!-- ===================== SPRITES ===================== -->
-      <section v-else class="card sprites">
-        <p class="muted">Sube la imagen de un personaje (PNG con fondo transparente, idealmente de frente). Se reduce a pixel-art con paleta limitada y se extruye a vóxeles 3D en el juego.</p>
-        <div class="row">
-          <label>Personaje
-            <select v-model="spriteId">
-              <option v-for="(c, id) in CHARACTERS" :key="id" :value="id">{{ c.name }}</option>
-            </select>
-          </label>
-          <label>Altura (px) {{ spriteSize }}
-            <input v-model.number="spriteSize" type="range" min="12" max="40" @input="process" />
-          </label>
-          <label>Colores {{ spriteColors }}
-            <input v-model.number="spriteColors" type="range" min="4" max="16" @input="process" />
-          </label>
-        </div>
-        <input type="file" accept="image/*" @change="loadImage" />
-        <div class="previews">
-          <div>
-            <small>Actual</small>
-            <canvas ref="currentCanvas" class="pix" />
-          </div>
-          <div v-if="spriteResult">
-            <small>Nuevo</small>
-            <canvas ref="newCanvas" class="pix" />
-          </div>
-        </div>
-        <div class="list-actions">
-          <button class="btn primary" :disabled="!spriteResult" @click="saveSprite">Guardar sprite</button>
-          <button v-if="sprites.custom[spriteId]" class="btn danger" @click="sprites.remove(spriteId).then(drawCurrent)">Volver al provisional</button>
-        </div>
-      </section>
+      <!-- ===================== PERSONAJES ===================== -->
+      <CharacterEditor v-else />
     </div>`,
-  setup () {
-    const tab = ref('missions')
+  setup (props) {
+    const tab = ref(props.initialTab)
 
     // ---------- Auth (solo Firebase) ----------
     const user = ref(fb.auth?.currentUser || null)
@@ -1010,54 +1358,7 @@ export const AdminView = {
       importOpen.value = false
     }
 
-    // ---------- Sprites ----------
-    const spriteId = ref('goku')
-    const spriteSize = ref(24)
-    const spriteColors = ref(10)
-    const spriteResult = ref(null)
-    const currentCanvas = ref(null)
-    const newCanvas = ref(null)
-    let lastImage = null
-
-    function drawGrid (canvas, grid, palette) {
-      if (!canvas) return
-      const scale = 6
-      canvas.width = Math.max(...grid.map(r => r.length)) * scale
-      canvas.height = grid.length * scale
-      const ctx = canvas.getContext('2d')
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-      grid.forEach((row, y) => [...row].forEach((ch, x) => {
-        if (!palette[ch]) return
-        ctx.fillStyle = palette[ch]
-        ctx.fillRect(x * scale, y * scale, scale, scale)
-      }))
-    }
-    function drawCurrent () {
-      const c = sprites.custom[spriteId.value]
-      if (c) drawGrid(currentCanvas.value, c.grid, c.palette)
-      else drawGrid(currentCanvas.value, CHARACTERS[spriteId.value].grid, PALETTE)
-    }
-    function loadImage (e) {
-      const file = e.target.files[0]
-      if (!file) return
-      const img = new Image()
-      img.onload = () => { lastImage = img; process() }
-      img.src = URL.createObjectURL(file)
-    }
-    async function process () {
-      if (!lastImage) return
-      spriteResult.value = imageToGrid(lastImage, { size: spriteSize.value, maxColors: spriteColors.value })
-      await nextTick()
-      drawGrid(newCanvas.value, spriteResult.value.grid, spriteResult.value.palette)
-    }
-    async function saveSprite () {
-      await sprites.save(spriteId.value, spriteResult.value)
-      drawCurrent()
-    }
-    watch(spriteId, () => nextTick(drawCurrent))
-    watch(tab, t => { if (t === 'sprites') nextTick(drawCurrent) })
-
     onMounted(() => { if (missions.all[0]) edit(missions.all[0]) })
-    return { firebaseEnabled, user, login, tab, newMission, exportPack, importOpen, importText, importPack, byPack, editingId, edit, missions, isPublished, draft, validate, publish, remove, errors, okMsg, MAPS, helpMap, helpLoc, MINIGAMES, CHARACTERS, TRACKS, spriteId, spriteSize, spriteColors, process, loadImage, spriteResult, currentCanvas, newCanvas, saveSprite, sprites, drawCurrent }
+    return { firebaseEnabled, user, login, tab, newMission, exportPack, importOpen, importText, importPack, byPack, editingId, edit, missions, isPublished, draft, validate, publish, remove, errors, okMsg, MAPS, helpMap, helpLoc, MINIGAMES, CHARACTERS, TRACKS }
   }
 }
