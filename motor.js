@@ -387,6 +387,67 @@ export function extractSprite (img, opts = {}) {
   return { grid, palette, cell: s }
 }
 
+// Detecta los sprites sueltos de una lámina (varios personajes sobre un fondo
+// liso o con rejilla). Devuelve cajas [x0, y0, x1, y1] ordenadas por filas.
+// opts: tol (diferencia con el fondo), minSize (px), pad (margen)
+export function detectSprites (img, opts = {}) {
+  const W = img.naturalWidth || img.width
+  const H = img.naturalHeight || img.height
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H
+  const ctx = cv.getContext('2d', { willReadFrequently: true })
+  ctx.drawImage(img, 0, 0)
+  const d = ctx.getImageData(0, 0, W, H).data
+  const tol = opts.tol ?? 42
+  // fondo: colores más frecuentes del borde (admite rejillas de 2 tonos)
+  const count = new Map()
+  const key = i => ((d[i] >> 3) << 10) | ((d[i + 1] >> 3) << 5) | (d[i + 2] >> 3)
+  const addBorder = (x, y) => { const i = (y * W + x) * 4; const k = key(i); count.set(k, (count.get(k) || 0) + 1) }
+  for (let x = 0; x < W; x += 2) { addBorder(x, 0); addBorder(x, H - 1) }
+  for (let y = 0; y < H; y += 2) { addBorder(0, y); addBorder(W - 1, y) }
+  const bgKeys = [...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k]) => [(k >> 10) << 3, ((k >> 5) & 31) << 3, (k & 31) << 3])
+  const isFg = new Uint8Array(W * H)
+  for (let p = 0; p < W * H; p++) {
+    const i = p * 4
+    if (d[i + 3] < 100) continue
+    let near = false
+    for (const b of bgKeys) if (Math.abs(d[i] - b[0]) + Math.abs(d[i + 1] - b[1]) + Math.abs(d[i + 2] - b[2]) < tol) { near = true; break }
+    if (!near) isFg[p] = 1
+  }
+  // componentes conexas (con un pequeño margen para unir partes del mismo sprite)
+  const gap = opts.gap ?? 3
+  const label = new Int32Array(W * H).fill(-1)
+  const boxes = []
+  for (let p = 0; p < W * H; p++) {
+    if (!isFg[p] || label[p] >= 0) continue
+    const id = boxes.length
+    const box = [W, H, 0, 0, 0]
+    const st = [p]; label[p] = id
+    while (st.length) {
+      const q = st.pop()
+      const x = q % W; const y = (q / W) | 0
+      if (x < box[0]) box[0] = x; if (y < box[1]) box[1] = y
+      if (x > box[2]) box[2] = x; if (y > box[3]) box[3] = y
+      box[4]++
+      for (let dy = -gap; dy <= gap; dy++) {
+        for (let dx = -gap; dx <= gap; dx++) {
+          const nx = x + dx; const ny = y + dy
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue
+          const n = ny * W + nx
+          if (isFg[n] && label[n] < 0) { label[n] = id; st.push(n) }
+        }
+      }
+    }
+    boxes.push(box)
+  }
+  const minSize = opts.minSize ?? 24
+  const pad = opts.pad ?? 4
+  const out = boxes.filter(b => b[2] - b[0] >= minSize && b[3] - b[1] >= minSize && b[4] > minSize * minSize * 0.25)
+    .map(b => [Math.max(0, b[0] - pad), Math.max(0, b[1] - pad), Math.min(W, b[2] + pad + 1), Math.min(H, b[3] + pad + 1)])
+  // orden de lectura: por filas (según el centro vertical) y de izquierda a derecha
+  const rowH = Math.max(40, Math.min(...out.map(b => b[3] - b[1])) * 0.6)
+  return out.sort((a, b) => Math.round(((a[1] + a[3]) / 2) / rowH) - Math.round(((b[1] + b[3]) / 2) / rowH) || a[0] - b[0])
+}
+
 function hexToRgb (hex) {
   const n = parseInt(hex.slice(1), 16)
   return [n >> 16, (n >> 8) & 255, n & 255]

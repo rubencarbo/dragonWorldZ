@@ -187,7 +187,7 @@ export const MAPS = {
         lines: [{ who: 'Roshi', text: 'Jo, jo, jo. ¿Has traído alguna revista... educativa?' }] },
       { id: 'krilin_npc', kind: 'npc', sprite: 'krilin', x: 8, y: 7, name: 'Krilin',
         lines: [{ who: 'Krilin', text: '¡Eh! Yo llegué primero. El maestro es mío... bueno, compartimos.' }] },
-      { id: 'umigame', kind: 'turtle', x: 4, y: 8, name: 'Umigame',
+      { id: 'umigame', kind: 'npc', sprite: 'umigame', x: 4, y: 8, name: 'Umigame',
         lines: [{ who: 'Umigame', text: 'Llevo mil años viviendo con el Maestro Roshi. He visto cosas... que es mejor no contar.' }] },
       { id: 'palmera', kind: 'palm', x: 3, y: 4, name: 'Palmera',
         lines: [{ who: 'Goku', text: 'Una palmera. Tiene cocos. ¿Se comerán?' }] }
