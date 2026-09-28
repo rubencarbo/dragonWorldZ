@@ -50,7 +50,9 @@ Para publicar misiones desde el panel Admin con Firebase, la cuenta necesita el 
 
 ## Qué incluye
 
-- Globo 3D low-poly con 4 mundos: la Tierra, el Planeta de Kaio, Namek y la Tierra del Futuro (línea temporal paralela).
+- Globo 3D como **maqueta**: planeta de piezas con carretera, árboles, flores, casas-cúpula, nubes y peana con placa (el Planeta de Kaio replica la maqueta de referencia). 4 mundos: la Tierra, el Planeta de Kaio, Namek y la Tierra del Futuro (línea temporal paralela).
+- **3 estilos gráficos** seleccionables en Ajustes: bloques de construcción, dibujo animado y pixel-art.
+- Zoom con **pellizco de dos dedos** (y rueda del ratón) en el globo y en los lugares.
 - Viaje en la Nube Kinton: **modo libre** o **modo dados** (con casillas-evento), seleccionable en Ajustes.
 - 4 lugares jugables (Montaña Paoz, Kame House, Capsule Corp, Torre Karin) y 4 misiones encadenadas.
 - Música chiptune original en bucle para cada lugar, más efectos de sonido.

@@ -12,8 +12,13 @@ export const WORLDS = [
     saga: 'Saga de las Esferas · Saga Saiyan',
     timeline: 'Línea principal',
     radius: 5,
-    colors: { deep: '#1b4f9c', sea: '#2b7bd6', sand: '#e8d38a', land: '#4caf50', hill: '#2f7d32', peak: '#f2f2f2' },
+    colors: { deep: '#2a74c8', sea: '#3d95e6', sand: '#f0dc8c', land: '#8ccf4c', hill: '#6db842', peak: '#f2f2f2' },
     sky: '#0b0b2a',
+    // maqueta: fondo, carretera y decoración
+    bg: 'linear-gradient(160deg, #5b2fb0 0%, #3a2aa8 45%, #22206e 100%)',
+    roadAxis: [0.137, 0.981, 0.134],
+    decoScale: 0.42,
+    plaque: 'La Tierra',
     music: 'globo',
     locations: [
       { id: 'paoz', name: 'Montaña Paoz', lat: 32, lon: -20, landmark: 'cabin', map: 'paoz',
@@ -31,15 +36,33 @@ export const WORLDS = [
     name: 'Planeta de Kaio',
     saga: 'Saga Saiyan',
     timeline: 'Línea principal (Más Allá)',
-    radius: 2.2,
+    radius: 2.6,
     seed: 3,
-    landBias: 0.6,
-    colors: { deep: '#3f8d3a', sea: '#57b04d', sand: '#7ccf62', land: '#7ccf62', hill: '#5aa84b', peak: '#9be07e' },
+    landBias: 0.8,
+    colors: { deep: '#6cbf3c', sea: '#7ccb44', sand: '#8fd34f', land: '#8fd34f', hill: '#6fbe3e', peak: '#9be07e' },
     sky: '#f1c46a',
+    // réplica de la maqueta del planeta de Kaio
+    bg: 'linear-gradient(160deg, #6a33c0 0%, #4a2cb8 40%, #2a2a9a 100%)',
+    roadAxis: [0.394, 0.776, -0.493], // cruza el frente en diagonal, bajo la casa
+    roadWidth: 0.36,
+    decoScale: 0.7,
+    tileSize: 0.24,
+    treeScale: 1.7,
+    trees: 9,
+    flowers: 60,
+    snakeWay: true,
+    plaque: 'Planeta de Kaio',
+    extras: [
+      { kind: 'car', lat: 43, lon: -52, spin: 2.2, scale: 1.3 },
+      { kind: 'kaio', lat: 38, lon: 42, spin: 0.4, scale: 1.3 },
+      { kind: 'bubbles', lat: 50, lon: 8, scale: 1.4 },
+      { kind: 'gregory', lat: 40, lon: 22, scale: 1.4 },
+      { kind: 'well', lat: 52, lon: 76, scale: 1.2 }
+    ],
     music: 'globo',
     locked: true,
     locations: [
-      { id: 'kaio_casa', name: 'Casa de Kaio', lat: 40, lon: 0, landmark: 'cabin', desc: 'Gravedad x10, un mono llamado Bubbles y chistes malos.' }
+      { id: 'kaio_casa', name: 'Casa de Kaio', lat: 68, lon: 10, landmark: 'kaiohouse', desc: 'Gravedad x10, un mono llamado Bubbles y chistes malos.' }
     ]
   },
   {
@@ -50,8 +73,10 @@ export const WORLDS = [
     radius: 4.6,
     seed: 7,
     landBias: -0.08,
-    colors: { deep: '#1f7a6b', sea: '#35b3a0', sand: '#9fd8a7', land: '#5cbf8a', hill: '#2e8a5f', peak: '#c7f0d3' },
+    colors: { deep: '#1f8a7b', sea: '#35c3b0', sand: '#b8e8b0', land: '#6fd08a', hill: '#3fa06a', peak: '#c7f0d3' },
     sky: '#1a2e2a',
+    bg: 'linear-gradient(160deg, #1f6a5a 0%, #2a8a6a 45%, #103a3a 100%)',
+    decoScale: 0.42,
     music: 'globo',
     locked: true,
     locations: [
@@ -66,8 +91,11 @@ export const WORLDS = [
     timeline: 'Línea paralela de Trunks',
     radius: 5,
     seed: 0, // misma geografía que la Tierra principal: es la misma Tierra en otra línea temporal
-    colors: { deep: '#2b3550', sea: '#46557a', sand: '#8a826e', land: '#5d6653', hill: '#454a3f', peak: '#b8b8b8' },
+    colors: { deep: '#2b3550', sea: '#46557a', sand: '#8a826e', land: '#6d7663', hill: '#555a4f', peak: '#b8b8b8' },
     sky: '#141018',
+    bg: 'linear-gradient(160deg, #3a2a3a 0%, #2a2030 45%, #0f0c14 100%)',
+    roadAxis: [0.3, 1, 0.55],
+    decoScale: 0.42,
     music: 'globo',
     locked: true,
     locations: [

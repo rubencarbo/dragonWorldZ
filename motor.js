@@ -14,9 +14,11 @@ import { TRACKS } from './mundos.js'
 //   1 → nítido (resolución nativa) · 2 → retro suave · 3-4 → 8 bits marcado
 // Se tiene en cuenta la densidad de la pantalla (devicePixelRatio), así el
 // aspecto es igual en un móvil con pantalla retina que en un monitor normal.
-export function createRetroRenderer (container, { pixelSize = 2 } = {}) {
-  const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' })
+export function createRetroRenderer (container, { pixelSize = 2, alpha = false } = {}) {
+  // a resolución nativa se activa el antialiasing (bordes suaves); en modo retro no
+  const renderer = new THREE.WebGLRenderer({ antialias: pixelSize <= 1, alpha, powerPreference: 'high-performance' })
   renderer.setPixelRatio(1)
+  if (alpha) renderer.setClearColor(0x000000, 0)
   renderer.shadowMap.enabled = true
   renderer.shadowMap.type = THREE.PCFShadowMap
   const canvas = renderer.domElement
@@ -104,17 +106,25 @@ export function attachGestures (canvas, { onTap, onDrag, onZoom }) {
     e.preventDefault()
     onZoom?.(Math.exp(-e.deltaY * 0.0015))
   }
+  // iOS Safari: sin esto, el pellizco amplía la página entera en vez del mapa
+  const block = e => { if (e.touches ? e.touches.length > 1 : true) e.preventDefault() }
   canvas.addEventListener('pointerdown', down)
   canvas.addEventListener('pointermove', move)
   canvas.addEventListener('pointerup', up)
   canvas.addEventListener('pointercancel', up)
   canvas.addEventListener('wheel', wheel, { passive: false })
+  canvas.addEventListener('touchmove', block, { passive: false })
+  canvas.addEventListener('gesturestart', block)
+  canvas.addEventListener('gesturechange', block)
   return () => {
     canvas.removeEventListener('pointerdown', down)
     canvas.removeEventListener('pointermove', move)
     canvas.removeEventListener('pointerup', up)
     canvas.removeEventListener('pointercancel', up)
     canvas.removeEventListener('wheel', wheel)
+    canvas.removeEventListener('touchmove', block)
+    canvas.removeEventListener('gesturestart', block)
+    canvas.removeEventListener('gesturechange', block)
   }
 }
 
@@ -902,4 +912,662 @@ export function findPath (w, h, blocked, from, to) {
     }
   }
   return null
+}
+
+// ============================================================ DIORAMA (globo estilo maqueta)
+// El mundo se muestra como una maqueta: planeta de piezas con carretera, árboles,
+// flores y casas, sobre una peana con nubes y placa con el nombre.
+// Tres estilos gráficos comparten la misma escena:
+//   bricks → piezas de construcción (studs, plástico brillante)
+//   toon   → dibujo animado (sombreado plano por bandas y contorno)
+//   pixel  → pixel-art (texturas sin suavizar, render a baja resolución)
+export const VISUAL_STYLES = {
+  bricks: { name: 'Bloques de construcción', short: 'Bloques' },
+  toon: { name: 'Dibujo animado', short: 'Cartoon' },
+  pixel: { name: 'Pixel-art retro', short: 'Pixel' }
+}
+
+function mulberry (seed) {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+let toonRamp
+function toonGradient () {
+  if (toonRamp) return toonRamp
+  toonRamp = new THREE.DataTexture(new Uint8Array([90, 170, 255]), 3, 1, THREE.RedFormat)
+  toonRamp.minFilter = toonRamp.magFilter = THREE.NearestFilter
+  toonRamp.needsUpdate = true
+  return toonRamp
+}
+
+// material según el estilo
+export function styleMat (style, opts = {}) {
+  if (style === 'toon') return new THREE.MeshToonMaterial({ gradientMap: toonGradient(), ...opts })
+  if (style === 'pixel') return new THREE.MeshLambertMaterial({ flatShading: true, ...opts })
+  return new THREE.MeshStandardMaterial({ roughness: 0.38, metalness: 0, ...opts })
+}
+
+function canvasTex (canvas, style, { repeatX = 1 } = {}) {
+  const t = new THREE.CanvasTexture(canvas)
+  t.colorSpace = THREE.SRGBColorSpace
+  t.anisotropy = 8
+  if (style === 'pixel') { t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false }
+  if (repeatX !== 1) { t.wrapS = THREE.RepeatWrapping; t.repeat.x = repeatX }
+  return t
+}
+
+function shadeCss (hex, k) {
+  const c = new THREE.Color(hex)
+  const hsl = {}
+  c.getHSL(hsl)
+  c.setHSL(hsl.h, hsl.s, THREE.MathUtils.clamp(hsl.l + k, 0, 1))
+  return '#' + c.getHexString()
+}
+
+// tipo de terreno en una dirección del planeta
+function biomeAt (dir, world) {
+  const n = fbm(dir, world.seed || 0) + (world.landBias ?? 0.08)
+  if (n < -0.12) return 'deep'
+  if (n < 0) return 'sea'
+  if (n < 0.04) return 'sand'
+  if (n < 0.22) return 'land'
+  return 'hill'
+}
+
+// textura del planeta: mosaico de piezas en coordenadas equirrectangulares,
+// con el nº de piezas por fila ajustado a la latitud para que midan lo mismo
+function planetTextures (world, style, maxSize) {
+  const R = world.radius
+  const tileWorld = (world.tileSize || 0.14) * (style === 'toon' ? 2.4 : style === 'pixel' ? 1.4 : 1)
+  const around = Math.max(24, Math.round((2 * Math.PI * R) / tileWorld))
+  const W = style === 'pixel' ? Math.min(maxSize, around * 8) : Math.min(maxSize, 4096)
+  const H = W / 2
+  const rows = Math.round(around / 2)
+  const col = document.createElement('canvas'); col.width = W; col.height = H
+  const bump = document.createElement('canvas'); bump.width = W; bump.height = H
+  const g = col.getContext('2d')
+  const b = bump.getContext('2d')
+  b.fillStyle = '#000'; b.fillRect(0, 0, W, H)
+  const rnd = mulberry((world.seed || 0) * 977 + 13)
+  const c = world.colors
+  const th = H / rows
+  for (let r = 0; r < rows; r++) {
+    const latC = 90 - (r + 0.5) * (180 / rows)
+    const n = Math.max(3, Math.round(around * Math.cos(THREE.MathUtils.degToRad(latC))))
+    const tw = W / n
+    for (let i = 0; i < n; i++) {
+      // u de la textura → longitud (convención de SphereGeometry)
+      const lon = ((i + 0.5) / n) * 360 - 90
+      const kind = biomeAt(latLonToDir(latC, lon), world)
+      let base = { deep: c.deep, sea: c.sea, sand: c.sand, land: c.land, hill: c.hill }[kind]
+      if (kind === 'land' && rnd() < 0.3) base = c.hill
+      const jitter = style === 'toon' ? (rnd() - 0.5) * 0.04 : (rnd() - 0.5) * 0.09 - (rnd() < 0.08 ? 0.06 : 0)
+      const fill = shadeCss(base, jitter)
+      const x = i * tw; const y = r * th
+      g.fillStyle = fill
+      g.fillRect(Math.floor(x), Math.floor(y), Math.ceil(tw) + 1, Math.ceil(th) + 1)
+      if (style !== 'toon') {
+        // junta entre piezas
+        g.fillStyle = 'rgba(0,0,0,0.13)'
+        g.fillRect(Math.floor(x), Math.floor(y), Math.ceil(tw), Math.max(1, th * 0.05))
+        g.fillRect(Math.floor(x), Math.floor(y), Math.max(1, tw * 0.05), Math.ceil(th))
+        b.fillStyle = '#222'
+        b.fillRect(Math.floor(x), Math.floor(y), Math.ceil(tw), Math.max(1, th * 0.06))
+        b.fillRect(Math.floor(x), Math.floor(y), Math.max(1, tw * 0.06), Math.ceil(th))
+      }
+      const studP = kind === 'deep' || kind === 'sea' ? 0.14 : 0.42
+      if (style === 'bricks' && rnd() < studP && Math.abs(latC) < 80) {
+        const cx = x + tw / 2; const cy = y + th / 2
+        const rr = Math.min(tw, th) * 0.3
+        g.fillStyle = 'rgba(0,0,0,0.22)'
+        g.beginPath(); g.ellipse(cx + rr * 0.18, cy + rr * 0.22, rr, rr, 0, 0, Math.PI * 2); g.fill()
+        g.fillStyle = shadeCss(fill, 0.05)
+        g.beginPath(); g.arc(cx, cy, rr, 0, Math.PI * 2); g.fill()
+        g.strokeStyle = 'rgba(255,255,255,0.45)'; g.lineWidth = Math.max(1, rr * 0.22)
+        g.beginPath(); g.arc(cx, cy, rr * 0.7, Math.PI * 1.05, Math.PI * 1.6); g.stroke()
+        b.fillStyle = '#fff'
+        b.beginPath(); b.arc(cx, cy, rr, 0, Math.PI * 2); b.fill()
+      }
+    }
+  }
+  return { map: canvasTex(col, style), bumpMap: style === 'bricks' ? canvasTex(bump, style) : null }
+}
+
+function roadTexture (style) {
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 64
+  const g = cv.getContext('2d')
+  g.fillStyle = '#f3f3f1'; g.fillRect(0, 0, 512, 64)
+  if (style !== 'toon') {
+    g.fillStyle = 'rgba(0,0,0,0.10)'
+    for (let x = 0; x < 512; x += 32) g.fillRect(x, 0, 2, 64)
+    g.fillRect(0, 31, 512, 2)
+  }
+  g.fillStyle = '#d4d4d0'; g.fillRect(0, 0, 512, 5); g.fillRect(0, 59, 512, 5)
+  return cv
+}
+
+// orienta un objeto sobre la superficie: su +Y apunta hacia fuera
+function placeOn (obj, dir, radius, spin = 0) {
+  obj.position.copy(dir).multiplyScalar(radius)
+  obj.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir)
+  if (spin) obj.rotateY(spin)
+  return obj
+}
+
+// Árbol de copa redonda (racimos de bolas, como en la maqueta)
+function treeParts (rnd) {
+  const blobs = [[0, 0.62, 0, 0.24]]
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + rnd() * 0.5
+    blobs.push([Math.cos(a) * 0.2, 0.5 + rnd() * 0.08, Math.sin(a) * 0.2, 0.15 + rnd() * 0.04])
+  }
+  blobs.push([0.05, 0.8, 0.02, 0.15])
+  return blobs
+}
+
+export function buildDiorama (world, style = 'bricks') {
+  const R = world.radius
+  const S = world.decoScale || 0.45 // tamaño de la decoración
+  const rnd = mulberry((world.seed || 0) * 31 + 7)
+  const maxTex = 4096
+  const planet = new THREE.Group()
+
+  // --- esfera
+  const tex = planetTextures(world, style, maxTex)
+  const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(R, style === 'pixel' ? 48 : 128, style === 'pixel' ? 32 : 96),
+    styleMat(style, { map: tex.map, ...(tex.bumpMap ? { bumpMap: tex.bumpMap, bumpScale: 1.2 } : {}) })
+  )
+  sphere.receiveShadow = true
+  planet.add(sphere)
+
+  // --- carretera blanca que rodea el planeta
+  const axis = new THREE.Vector3(...(world.roadAxis || [0.35, 1, 0.15])).normalize()
+  const roadW = (world.roadWidth || 0.42) / R // semiancho angular
+  const road = new THREE.Group()
+  const band = new THREE.Mesh(
+    new THREE.SphereGeometry(R * 1.008, 256, 3, 0, Math.PI * 2, Math.PI / 2 - roadW, roadW * 2),
+    styleMat(style, { map: canvasTex(roadTexture(style), style, { repeatX: Math.max(4, Math.round(2 * Math.PI * R / 0.6)) }) })
+  )
+  road.add(band)
+  for (const side of [-1, 1]) {
+    const rr = R * 1.008
+    const curb = new THREE.Mesh(new THREE.TorusGeometry(rr * Math.cos(roadW), R * 0.012, 6, 192), styleMat(style, { color: '#d9d9d6' }))
+    curb.rotation.x = Math.PI / 2
+    curb.position.y = side * rr * Math.sin(roadW)
+    road.add(curb)
+  }
+  road.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis)
+  planet.add(road)
+  const onRoad = dir => Math.abs(dir.dot(axis)) < Math.sin(roadW * 1.6)
+
+  // puntos reservados (lugares) donde no se ponen árboles
+  const reserved = (world.locations || []).map(l => latLonToDir(l.lat, l.lon))
+  const free = (dir, gap) => !onRoad(dir) && reserved.every(r => r.angleTo(dir) > gap)
+  const isLand = dir => ['land', 'hill', 'sand'].includes(biomeAt(dir, world))
+
+  // --- árboles (una sola malla instanciada para las copas y otra para troncos)
+  const treeCount = world.trees ?? Math.round(R * R * 1.6)
+  const trees = []
+  for (let tries = 0; trees.length < treeCount && tries < treeCount * 40; tries++) {
+    const dir = new THREE.Vector3().randomDirection()
+    if (!isLand(dir) || biomeAt(dir, world) === 'sand' || !free(dir, 0.3 * (5 / R))) continue
+    if (trees.some(t => t.dir.angleTo(dir) < 0.12 * (5 / R))) continue
+    trees.push({ dir, s: S * (world.treeScale || 1) * (0.75 + rnd() * 0.6), parts: treeParts(rnd), spin: rnd() * 6.28 })
+  }
+  const blobGeo = style === 'pixel' ? new THREE.BoxGeometry(1.6, 1.6, 1.6) : style === 'toon' ? new THREE.SphereGeometry(1, 16, 12) : new THREE.IcosahedronGeometry(1, 1)
+  const leaves = new THREE.InstancedMesh(blobGeo, styleMat(style, { flatShading: style !== 'toon' }), trees.reduce((a, t) => a + t.parts.length, 0))
+  const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.07, 0.5, 8), styleMat(style, { color: '#7a4a22' }), trees.length)
+  const greens = ['#2e8b3a', '#3aa047', '#4cb552', '#2a7a34']
+  const m = new THREE.Matrix4(); const q = new THREE.Quaternion(); const col = new THREE.Color()
+  let li = 0
+  trees.forEach((t, ti) => {
+    const base = new THREE.Object3D()
+    placeOn(base, t.dir, R, t.spin)
+    base.scale.setScalar(t.s)
+    base.updateMatrix()
+    m.makeTranslation(0, 0.25, 0); trunks.setMatrixAt(ti, base.matrix.clone().multiply(m))
+    const tint = greens[Math.floor(rnd() * greens.length)]
+    for (const [x, y, z, r] of t.parts) {
+      m.compose(new THREE.Vector3(x, y, z), q.identity(), new THREE.Vector3(r, r, r))
+      leaves.setMatrixAt(li, base.matrix.clone().multiply(m))
+      leaves.setColorAt(li++, col.set(shadeCss(tint, (rnd() - 0.5) * 0.08)))
+    }
+  })
+  leaves.castShadow = trunks.castShadow = true
+  planet.add(leaves, trunks)
+
+  // --- flores y matas
+  const flowerN = world.flowers ?? Math.round(R * R * 5)
+  const petals = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.045, 0.045, 0.02, style === 'pixel' ? 4 : 10), styleMat(style), flowerN)
+  const cores = new THREE.InstancedMesh(new THREE.SphereGeometry(0.02, 6, 4), styleMat(style, { color: '#f6b21c' }), flowerN)
+  const tufts = new THREE.InstancedMesh(new THREE.ConeGeometry(0.05, 0.12, 5), styleMat(style, { color: '#3f9e3a' }), flowerN)
+  let fi = 0
+  for (let tries = 0; fi < flowerN && tries < flowerN * 30; tries++) {
+    const dir = new THREE.Vector3().randomDirection()
+    if (!isLand(dir) || !free(dir, 0.12 * (5 / R))) continue
+    const o = placeOn(new THREE.Object3D(), dir, R * 1.002)
+    o.scale.setScalar(S * 1.4)
+    o.updateMatrix()
+    petals.setMatrixAt(fi, o.matrix)
+    petals.setColorAt(fi, col.set(rnd() < 0.6 ? '#ffffff' : '#ffe14a'))
+    m.makeTranslation(0, 0.015, 0); cores.setMatrixAt(fi, o.matrix.clone().multiply(m))
+    m.makeTranslation(0.09, 0.05, 0.04); tufts.setMatrixAt(fi, o.matrix.clone().multiply(m))
+    fi++
+  }
+  petals.count = cores.count = tufts.count = fi
+  planet.add(petals, cores, tufts)
+
+  // --- peana fija (no gira con el planeta): nubes, pilares, base y placa
+  const stand = new THREE.Group()
+  const baseY = -R * 1.62
+  const white = styleMat(style, { color: '#fbfbfb' })
+  const cloudGeo = style === 'pixel' ? new THREE.BoxGeometry(1.6, 1.6, 1.6) : new THREE.SphereGeometry(1, 20, 14)
+  const clouds = new THREE.InstancedMesh(cloudGeo, white, 46)
+  for (let i = 0; i < 46; i++) {
+    const a = (i / 46) * Math.PI * 2 + rnd() * 0.3
+    const rad = R * (0.35 + rnd() * 0.55)
+    const r = R * (0.11 + rnd() * 0.1)
+    m.compose(new THREE.Vector3(Math.cos(a) * rad, -R * 1.18 + rnd() * R * 0.12, Math.sin(a) * rad), q.identity(), new THREE.Vector3(r * 1.2, r * 0.75, r))
+    clouds.setMatrixAt(i, m)
+  }
+  stand.add(clouds)
+  const glass = new THREE.MeshStandardMaterial({ color: '#dff4ff', transparent: true, opacity: 0.35, roughness: 0.1 })
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4
+    const pil = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.035, R * 0.035, R * 0.42, 12), glass)
+    pil.position.set(Math.cos(a) * R * 0.42, baseY + R * 0.28, Math.sin(a) * R * 0.42)
+    stand.add(pil)
+  }
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.92, R * 1.0, R * 0.16, 64), styleMat(style, { color: '#1d1b24' }))
+  base.position.y = baseY
+  stand.add(base)
+  for (const [yy, rr] of [[baseY + R * 0.08, R * 0.92], [baseY - R * 0.08, R * 1.0]]) {
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(rr, R * 0.018, 8, 96), styleMat(style, { color: '#c9a24a', ...(style === 'bricks' ? { metalness: 0.6, roughness: 0.3 } : {}) }))
+    rim.rotation.x = Math.PI / 2
+    rim.position.y = yy
+    stand.add(rim)
+  }
+  // placa con el nombre del mundo
+  const pc = document.createElement('canvas'); pc.width = 1024; pc.height = 256
+  const pg = pc.getContext('2d')
+  pg.fillStyle = '#15131b'; pg.fillRect(0, 0, 1024, 256)
+  pg.strokeStyle = '#c9a24a'; pg.lineWidth = 10; pg.strokeRect(14, 14, 996, 228)
+  pg.fillStyle = '#e9d9a6'; pg.font = 'bold 84px Georgia, serif'; pg.textAlign = 'center'; pg.textBaseline = 'middle'
+  pg.fillText((world.plaque || world.name).toUpperCase(), 512, 110)
+  pg.fillStyle = '#ff9a1f'; pg.beginPath(); pg.arc(512, 200, 26, 0, Math.PI * 2); pg.fill()
+  pg.fillStyle = '#d6333a'; pg.font = 'bold 30px sans-serif'; pg.fillText('★', 512, 201)
+  const plaque = new THREE.Mesh(new THREE.BoxGeometry(R * 1.05, R * 0.26, R * 0.03),
+    [...Array(4).fill(styleMat(style, { color: '#15131b' })), styleMat(style, { map: canvasTex(pc, style) }), styleMat(style, { color: '#15131b' })])
+  plaque.position.set(0, baseY, R * 0.99)
+  plaque.rotation.x = -0.05
+  stand.add(plaque)
+
+  // --- Camino de la Serpiente (solo en los mundos que lo tienen)
+  if (world.snakeWay) {
+    const pts = []
+    for (let i = 0; i <= 40; i++) {
+      const t = i / 40
+      const a = Math.PI * 0.75 + t * Math.PI * 1.9
+      const rad = R * (1.02 - 0.22 * t)
+      pts.push(new THREE.Vector3(Math.cos(a) * rad, baseY + R * 0.18 + t * R * 0.95, Math.sin(a) * rad))
+    }
+    const curve = new THREE.CatmullRomCurve3(pts)
+    const segN = 110
+    const segs = new THREE.InstancedMesh(new THREE.BoxGeometry(R * 0.13, R * 0.045, R * 0.075), styleMat(style), segN)
+    const o = new THREE.Object3D()
+    for (let i = 0; i < segN; i++) {
+      const t = i / (segN - 1)
+      o.position.copy(curve.getPointAt(t))
+      o.lookAt(o.position.clone().add(curve.getTangentAt(t)))
+      o.rotateY(Math.PI / 2)
+      o.updateMatrix()
+      segs.setMatrixAt(i, o.matrix)
+      segs.setColorAt(i, col.set(i % 2 ? '#f7f3e8' : '#e8e0cc'))
+    }
+    stand.add(segs)
+  }
+
+  // --- extras decorativos (coche, personajes...) repartidos por el planeta
+  for (const ex of world.extras || []) {
+    const model = extraModel(ex.kind, style)
+    placeOn(model, latLonToDir(ex.lat, ex.lon), R, ex.spin || 0)
+    model.scale.multiplyScalar(S * (ex.scale || 1))
+    planet.add(model)
+  }
+
+  return {
+    planet,
+    stand,
+    sphere,
+    radius: R,
+    surface: (dir, lift = 0) => dir.clone().normalize().multiplyScalar(R + lift)
+  }
+}
+
+// ------------------------------------------------------------ lugares emblemáticos
+export function landmarkModel (kind, style = 'bricks') {
+  const M = (color, extra) => styleMat(style, { color, ...extra })
+  const g = new THREE.Group()
+  const add = (geo, mat, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => {
+    const mesh = new THREE.Mesh(geo, mat)
+    mesh.position.set(x, y, z); mesh.rotation.set(rx, ry, rz)
+    mesh.castShadow = true
+    g.add(mesh)
+    return mesh
+  }
+  const seg = style === 'pixel' ? 8 : 32
+  const dome = (r, x, z, colors) => {
+    const [body, band, cap] = colors
+    add(new THREE.CylinderGeometry(r, r * 1.02, r * 0.18, seg), M(shadeCss(body, -0.06)), x, r * 0.09, z)
+    add(new THREE.SphereGeometry(r, seg, seg / 2, 0, Math.PI * 2, 0, Math.PI / 2), M(body), x, r * 0.18, z)
+    const t = add(new THREE.TorusGeometry(r * 0.83, r * 0.06, 8, seg), M(band), x, r * 0.72, z, Math.PI / 2)
+    t.scale.z = 1
+    add(new THREE.SphereGeometry(r * 0.42, seg, seg / 2, 0, Math.PI * 2, 0, Math.PI / 2), M(cap), x, r * 0.9, z).scale.y = 0.55
+  }
+  const door = (x, y, z, h, color = '#8a5a2a', inner = '#3a5fa8', ry = 0) => {
+    const d = new THREE.Group()
+    const fr = new THREE.Mesh(new THREE.BoxGeometry(h * 0.62, h * 0.7, 0.05), M(color)); fr.position.y = h * 0.35
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(h * 0.31, h * 0.31, 0.05, 16, 1, false, -Math.PI / 2, Math.PI), M(color))
+    top.rotation.x = Math.PI / 2; top.position.y = h * 0.7
+    const inn = new THREE.Mesh(new THREE.BoxGeometry(h * 0.44, h * 0.62, 0.06), M(inner)); inn.position.y = h * 0.33
+    d.add(fr, top, inn)
+    d.position.set(x, y, z); d.rotation.y = ry
+    g.add(d)
+  }
+  switch (kind) {
+    case 'kaiohouse': {
+      const cols = ['#f1d58c', '#b98a3c', '#fbfbf5']
+      dome(0.55, 0, 0, cols)
+      dome(0.34, 0.66, -0.12, cols)
+      dome(0.28, -0.52, -0.42, cols)
+      for (const x of [-0.08, 0.1]) {
+        add(new THREE.CylinderGeometry(0.012, 0.012, 0.32, 6), M('#8a8a90'), x, 0.92, 0)
+        add(new THREE.SphereGeometry(0.03, 8, 6), M('#9a9aa0'), x, 1.09, 0)
+      }
+      door(0, 0.02, 0.5, 0.42)
+      door(0.68, 0.02, 0.2, 0.26, '#8a5a2a', '#6a3a1a', 0.3)
+      for (const a of [-0.9, 0.8]) add(new THREE.SphereGeometry(0.07, 10, 8), M('#3a5fa8'), Math.sin(a) * 0.5, 0.36, Math.cos(a) * 0.5).scale.set(1.2, 0.8, 0.5)
+      break
+    }
+    case 'dome': { // Capsule Corp
+      dome(0.62, 0, 0, ['#f6f6f2', '#2d5bc2', '#fbfbf5'])
+      dome(0.34, 0.7, -0.2, ['#f6f6f2', '#2d5bc2', '#fbfbf5'])
+      door(0, 0.02, 0.56, 0.4, '#2d5bc2', '#9fd3ff')
+      break
+    }
+    case 'cabin': { // casa del abuelo Gohan
+      add(new THREE.CylinderGeometry(0.42, 0.46, 0.5, style === 'pixel' ? 8 : 24), M('#f0e0bc'), 0, 0.25, 0)
+      add(new THREE.ConeGeometry(0.66, 0.42, style === 'pixel' ? 8 : 24), M('#c8412e'), 0, 0.7, 0)
+      add(new THREE.SphereGeometry(0.07, 8, 6), M('#f6b21c'), 0, 0.94, 0)
+      door(0, 0.01, 0.41, 0.34, '#8a5a2a', '#5a3414')
+      add(new THREE.CylinderGeometry(0.08, 0.08, 0.02, 12), M('#9fd3ff'), 0.28, 0.32, 0.33, Math.PI / 2, 0, 0)
+      break
+    }
+    case 'kamehouse': {
+      add(new THREE.CylinderGeometry(0.75, 0.8, 0.12, seg), M('#ecd9a0'), 0, 0.06, 0)
+      add(new THREE.BoxGeometry(0.62, 0.42, 0.5), M('#f29ec0'), 0, 0.33, 0)
+      add(new THREE.ConeGeometry(0.52, 0.32, 4), M('#d6333a'), 0, 0.7, 0, 0, Math.PI / 4)
+      door(0, 0.12, 0.26, 0.28, '#7a4a22', '#4a2a12')
+      add(new THREE.BoxGeometry(0.4, 0.08, 0.02), M('#ffffff'), 0, 0.5, 0.26)
+      add(new THREE.CylinderGeometry(0.03, 0.04, 0.7, 6), M('#9c6b3a'), -0.5, 0.45, -0.2, 0, 0, 0.2)
+      add(new THREE.SphereGeometry(0.2, 8, 6), M('#3e9b3e'), -0.57, 0.85, -0.2).scale.y = 0.4
+      break
+    }
+    case 'tower': { // Torre Karin
+      add(new THREE.CylinderGeometry(0.1, 0.14, 2.2, 16), M('#f3ead2'), 0, 1.1, 0)
+      for (const y of [0.5, 1.1, 1.7]) add(new THREE.TorusGeometry(0.12, 0.02, 6, 16), M('#c9a24a'), 0, y, 0, Math.PI / 2)
+      add(new THREE.SphereGeometry(0.3, 16, 12), M('#f3ead2'), 0, 2.35, 0).scale.y = 0.6
+      add(new THREE.ConeGeometry(0.08, 0.3, 12), M('#c9a24a'), 0, 2.65, 0)
+      break
+    }
+    default:
+      add(new THREE.BoxGeometry(0.4, 0.4, 0.4), M('#ff00ff'), 0, 0.2, 0)
+  }
+  return g
+}
+
+// ------------------------------------------------------------ decoración extra
+function extraModel (kind, style) {
+  const M = color => styleMat(style, { color })
+  const g = new THREE.Group()
+  const add = (geo, color, x, y, z, sx = 1, sy = 1, sz = 1) => {
+    const mesh = new THREE.Mesh(geo, M(color)); mesh.position.set(x, y, z); mesh.scale.set(sx, sy, sz); mesh.castShadow = true; g.add(mesh); return mesh
+  }
+  if (kind === 'car') { // el descapotable rojo de Kaio
+    add(new THREE.BoxGeometry(0.62, 0.16, 0.34), '#d62a2a', 0, 0.14, 0)
+    add(new THREE.SphereGeometry(0.2, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), '#d62a2a', 0.05, 0.2, 0, 1.2, 0.55, 0.85)
+    add(new THREE.BoxGeometry(0.2, 0.1, 0.28), '#e8f4ff', -0.02, 0.3, 0)
+    for (const [x, z] of [[-0.2, 0.17], [0.2, 0.17], [-0.2, -0.17], [0.2, -0.17]]) {
+      const w = add(new THREE.CylinderGeometry(0.075, 0.075, 0.05, 14), '#1a1a1a', x, 0.075, z); w.rotation.x = Math.PI / 2
+    }
+    add(new THREE.CylinderGeometry(0.006, 0.006, 0.25, 4), '#888', 0.22, 0.35, 0.1)
+  } else if (kind === 'bubbles') { // el mono de Kaio
+    add(new THREE.SphereGeometry(0.13, 14, 10), '#6b3a1e', 0, 0.2, 0, 1, 1.1, 0.9)
+    add(new THREE.SphereGeometry(0.11, 14, 10), '#6b3a1e', 0, 0.41, 0)
+    add(new THREE.SphereGeometry(0.07, 12, 8), '#e2b48a', 0, 0.39, 0.07, 1, 0.8, 0.6)
+    for (const s of [-1, 1]) {
+      add(new THREE.SphereGeometry(0.045, 8, 6), '#e2b48a', s * 0.11, 0.44, 0)
+      add(new THREE.CylinderGeometry(0.03, 0.03, 0.18, 6), '#6b3a1e', s * 0.14, 0.26, 0.02).rotation.z = -s * 0.8
+    }
+  } else if (kind === 'gregory') { // el grillo
+    add(new THREE.SphereGeometry(0.1, 14, 10), '#1c1c22', 0, 0.12, 0, 1, 0.9, 1.2)
+    add(new THREE.SphereGeometry(0.075, 12, 8), '#1c1c22', 0, 0.24, 0.07)
+    add(new THREE.SphereGeometry(0.03, 8, 6), '#f4c542', 0, 0.23, 0.13)
+    for (const s of [-1, 1]) add(new THREE.CylinderGeometry(0.006, 0.006, 0.16, 4), '#1c1c22', s * 0.03, 0.36, 0.06).rotation.z = s * 0.4
+  } else if (kind === 'kaio') {
+    return heroModel('kaio', style === 'pixel' ? 'bricks' : style) // Kaio no tiene sprite pixel-art
+  } else if (kind === 'well') { // brasero/pozo de piedra
+    add(new THREE.CylinderGeometry(0.22, 0.24, 0.16, 20), '#f1d58c', 0, 0.08, 0)
+    add(new THREE.CylinderGeometry(0.15, 0.15, 0.02, 20), '#6b4a2a', 0, 0.17, 0)
+    add(new THREE.BoxGeometry(0.03, 0.2, 0.03), '#6b4a2a', 0.08, 0.26, 0)
+  }
+  return g
+}
+
+// ------------------------------------------------------------ personajes 3D (figuras)
+// Colores de cada personaje para las figuras de los estilos "bloques" y "cartoon"
+export const FIGURES = {
+  goku: { skin: '#f2c79b', hair: 'goku', hairColor: '#17161c', top: '#f07a22', under: '#2a57b8', belt: '#2a57b8', legs: '#f07a22', boots: '#2a57b8', emblem: true },
+  goku_ssj: { skin: '#f2c79b', hair: 'goku', hairColor: '#ffd64a', top: '#f07a22', under: '#2a57b8', belt: '#2a57b8', legs: '#f07a22', boots: '#2a57b8', emblem: true, eyes: '#1aa58a' },
+  goku_ssj2: { skin: '#f2c79b', hair: 'goku', hairColor: '#ffe06a', top: '#f07a22', under: '#2a57b8', belt: '#2a57b8', legs: '#f07a22', boots: '#2a57b8', emblem: true, eyes: '#1aa58a' },
+  goku_ssj3: { skin: '#f2c79b', hair: 'long', hairColor: '#ffd64a', top: '#f07a22', under: '#2a57b8', belt: '#2a57b8', legs: '#f07a22', boots: '#2a57b8', emblem: true, eyes: '#1aa58a' },
+  goku_nino: { skin: '#f2c79b', hair: 'goku', hairColor: '#17161c', top: '#3f4ea8', under: '#2d6fb5', belt: '#c9cdd8', legs: '#3f4ea8', boots: '#8a4a2a', scale: 0.8 },
+  gohan: { skin: '#f2c79b', hair: 'gohan', hairColor: '#17161c', top: '#7a4bb0', under: '#7a4bb0', belt: '#d6333a', legs: '#7a4bb0', boots: '#7c4a22', scale: 0.9 },
+  gohan_ssj: { skin: '#f2c79b', hair: 'gohan', hairColor: '#ffd64a', top: '#7a4bb0', under: '#7a4bb0', belt: '#d6333a', legs: '#7a4bb0', boots: '#7c4a22', scale: 0.9, eyes: '#1aa58a' },
+  krilin: { skin: '#f2c79b', hair: 'bald', top: '#f07a22', under: '#2a57b8', belt: '#2a57b8', legs: '#f07a22', boots: '#2a57b8', emblem: true, dots: true, scale: 0.85 },
+  vegeta: { skin: '#f2c79b', hair: 'vegeta', hairColor: '#17161c', top: '#f4f4f4', under: '#2a4fb0', belt: '#f4f4f4', legs: '#2a4fb0', boots: '#f4f4f4', arms: '#2a4fb0', hands: '#f4f4f4', pads: '#e8c14a' },
+  vegeta_ssj: { skin: '#f2c79b', hair: 'vegeta', hairColor: '#ffd64a', top: '#f4f4f4', under: '#2a4fb0', belt: '#f4f4f4', legs: '#2a4fb0', boots: '#f4f4f4', arms: '#2a4fb0', hands: '#f4f4f4', pads: '#e8c14a', eyes: '#1aa58a' },
+  piccolo: { skin: '#6cc24a', hair: 'turban', hairColor: '#f4f4f4', top: '#5a3a9a', under: '#5a3a9a', belt: '#3b6fd6', legs: '#5a3a9a', boots: '#7c4a22', cape: '#f4f4f4' },
+  bulma: { skin: '#f2c79b', hair: 'bulma', hairColor: '#4fb3d9', top: '#f29ec0', under: '#f29ec0', belt: '#d6333a', legs: '#2d3a5c', boots: '#8a5a3a', scale: 0.9 },
+  kaio: { skin: '#4f8fd8', hair: 'kaio', hairColor: '#1c1c22', top: '#1c1c22', under: '#d6333a', belt: '#d6333a', legs: '#f4f4f4', boots: '#1c1c22', emblem: true, glasses: true }
+}
+
+function faceTexture (f, style, uFront, dy = 0) {
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 256
+  const g = cv.getContext('2d')
+  g.fillStyle = f.skin; g.fillRect(0, 0, 512, 256)
+  const cx = uFront * 512
+  if (f.glasses) {
+    g.fillStyle = '#111'
+    g.beginPath(); g.ellipse(cx - 34, 110 + dy, 30, 18, 0, 0, Math.PI * 2); g.ellipse(cx + 34, 110 + dy, 30, 18, 0, 0, Math.PI * 2); g.fill()
+    g.fillRect(cx - 10, 104 + dy, 20, 6)
+  } else {
+    for (const s of [-1, 1]) {
+      g.fillStyle = '#ffffff'; g.beginPath(); g.ellipse(cx + s * 34, 112 + dy, 17, 22, 0, 0, Math.PI * 2); g.fill()
+      g.fillStyle = f.eyes || '#15131b'; g.beginPath(); g.ellipse(cx + s * 30, 116 + dy, 11, 17, 0, 0, Math.PI * 2); g.fill()
+      g.fillStyle = '#111'; g.beginPath(); g.ellipse(cx + s * 30, 118 + dy, 6, 10, 0, 0, Math.PI * 2); g.fill()
+      g.fillStyle = '#fff'; g.beginPath(); g.arc(cx + s * 26, 108 + dy, 4, 0, Math.PI * 2); g.fill()
+      g.strokeStyle = '#15131b'; g.lineWidth = 7
+      g.beginPath(); g.moveTo(cx + s * 14, 80 + dy + (f.hair === 'vegeta' ? 8 : 0)); g.lineTo(cx + s * 54, 84 + dy - (f.hair === 'vegeta' ? 8 : 0)); g.stroke()
+    }
+  }
+  // sonrisa
+  g.strokeStyle = '#6b2a1e'; g.lineWidth = 6
+  g.beginPath(); g.arc(cx, 150 + dy, 24, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke()
+  g.fillStyle = '#ffffff'; g.beginPath(); g.arc(cx, 154 + dy, 17, 0.1 * Math.PI, 0.9 * Math.PI); g.fill()
+  if (f.dots) {
+    g.fillStyle = '#9a5a3a'
+    for (const [dx, dy] of [[-20, 28], [0, 22], [20, 28], [-20, 48], [0, 42], [20, 48]]) { g.beginPath(); g.arc(cx + dx, dy, 5, 0, Math.PI * 2); g.fill() }
+  }
+  return canvasTex(cv, style)
+}
+
+function torsoTexture (f, style) {
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256
+  const g = cv.getContext('2d')
+  g.fillStyle = f.top; g.fillRect(0, 0, 256, 256)
+  g.fillStyle = f.under; g.beginPath(); g.moveTo(80, 0); g.lineTo(176, 0); g.lineTo(128, 90); g.fill()
+  g.fillStyle = f.belt; g.fillRect(0, 205, 256, 40)
+  if (f.emblem) {
+    g.fillStyle = '#ffffff'; g.beginPath(); g.arc(70, 110, 30, 0, Math.PI * 2); g.fill()
+    g.strokeStyle = '#111'; g.lineWidth = 7; g.stroke()
+    g.fillStyle = '#111'; g.font = 'bold 40px serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('亀', 70, 112)
+  }
+  if (f.pads) { g.fillStyle = f.pads; g.fillRect(0, 0, 50, 40); g.fillRect(206, 0, 50, 40) }
+  return canvasTex(cv, style)
+}
+
+// peinados como conjunto de conos alrededor de la cabeza
+function addHair (group, f, style, headY, headR) {
+  const mat = styleMat(style, { color: f.hairColor || '#17161c' })
+  const cap = (ry = 0.75) => {
+    const c = new THREE.Mesh(new THREE.SphereGeometry(headR * 1.08, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat)
+    c.position.y = headY + headR * 0.05; c.scale.y = ry; group.add(c)
+  }
+  // punta cónica que sale de la cabeza en la dirección (elevación, giro)
+  const spike = (len, r, elev, yaw) => {
+    const dir = new THREE.Vector3(Math.sin(yaw) * Math.cos(elev), Math.sin(elev), Math.cos(yaw) * Math.cos(elev))
+    const s = new THREE.Mesh(new THREE.ConeGeometry(r, len, 6), mat)
+    s.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir)
+    s.position.set(0, headY + headR * 0.35, 0).addScaledVector(dir, headR * 0.75 + len / 2)
+    group.add(s)
+  }
+  switch (f.hair) {
+    case 'goku':
+    case 'gohan': {
+      cap()
+      const big = f.hair === 'goku' ? 1 : 0.75
+      // puntas hacia arriba y atrás, abiertas en abanico (estilo Goku)
+      // [longitud, elevación, giro]: abanico hacia arriba, los lados y atrás
+      const spikes = [[1.0, 1.25, 0.3], [1.1, 1.0, 2.6], [1.1, 0.9, -2.6], [1.0, 0.55, 2.0], [1.0, 0.55, -2.0],
+        [0.9, 0.2, 1.7], [0.9, 0.2, -1.7], [1.0, 0.45, 3.14], [0.8, 1.1, 1.2], [0.8, 1.1, -1.2]]
+      for (const [len, elev, yaw] of spikes) spike(headR * 1.2 * len * big, headR * 0.32, elev, yaw)
+      // flequillo hacia delante
+      for (const x of [-0.45, 0, 0.45]) {
+        const b = new THREE.Mesh(new THREE.ConeGeometry(headR * 0.18, headR * 0.5, 5), mat)
+        b.position.set(x * headR, headY + headR * 0.55, headR * 0.82); b.rotation.x = Math.PI * 0.72; group.add(b)
+      }
+      break
+    }
+    case 'long': { // SSJ3
+      cap()
+      for (let i = 0; i < 7; i++) spike(headR * 1.3, headR * 0.35, 0.9 - Math.abs(i - 3) * 0.15, Math.PI + (i - 3) * 0.45)
+      const mane = new THREE.Mesh(new THREE.ConeGeometry(headR * 0.9, headR * 3.2, 10), mat)
+      mane.position.set(0, headY - headR * 0.9, -headR * 0.9); mane.rotation.x = -0.25; group.add(mane)
+      break
+    }
+    case 'vegeta': {
+      cap(0.8)
+      for (const [x, z, h, tilt] of [[0, -0.1, 2.2, 0], [-0.4, -0.1, 1.8, 0.25], [0.4, -0.1, 1.8, -0.25], [-0.2, -0.4, 1.9, 0.1], [0.2, -0.4, 1.9, -0.1], [0, 0.25, 1.4, 0]]) {
+        const s = new THREE.Mesh(new THREE.ConeGeometry(headR * 0.42, headR * h, 7), mat)
+        s.position.set(x * headR, headY + headR * (0.5 + h / 2), z * headR); s.rotation.z = tilt; group.add(s)
+      }
+      break
+    }
+    case 'bulma': {
+      cap(0.9)
+      for (const s of [-1, 1]) {
+        const side = new THREE.Mesh(new THREE.CylinderGeometry(headR * 0.35, headR * 0.45, headR * 1.3, 12), mat)
+        side.position.set(s * headR * 0.85, headY - headR * 0.2, -headR * 0.1); group.add(side)
+      }
+      const back = new THREE.Mesh(new THREE.SphereGeometry(headR * 1.05, 16, 10), mat)
+      back.position.set(0, headY - headR * 0.1, -headR * 0.35); back.scale.set(1, 1.05, 0.7); group.add(back)
+      break
+    }
+    case 'turban': {
+      const t = new THREE.Mesh(new THREE.SphereGeometry(headR * 1.18, 20, 12, 0, Math.PI * 2, 0, Math.PI / 1.8), mat)
+      t.position.y = headY + headR * 0.05; group.add(t)
+      const gem = new THREE.Mesh(new THREE.SphereGeometry(headR * 0.25, 12, 8), styleMat(style, { color: '#7a4bb0' }))
+      gem.position.set(0, headY + headR * 1.05, 0); gem.scale.y = 0.6; group.add(gem)
+      break
+    }
+    case 'kaio': {
+      for (const s of [-1, 1]) {
+        const a = new THREE.Mesh(new THREE.CylinderGeometry(headR * 0.06, headR * 0.06, headR * 1.2, 6), mat)
+        a.position.set(s * headR * 0.35, headY + headR * 1.4, 0); a.rotation.z = -s * 0.25; group.add(a)
+        const tip = new THREE.Mesh(new THREE.SphereGeometry(headR * 0.14, 8, 6), mat)
+        tip.position.set(s * headR * 0.52, headY + headR * 1.98, 0); group.add(tip)
+      }
+      break
+    }
+    default: break
+  }
+}
+
+// Figura estilo "minifigura" (bloques) o "chibi" (cartoon)
+export function heroModel (id, style = 'bricks') {
+  if (style === 'pixel') return characterModel(id, 0.06)
+  const f = FIGURES[id] || FIGURES.goku
+  const g = new THREE.Group()
+  const M = color => styleMat(style, { color })
+  const add = (geo, mat, x, y, z) => { const mesh = new THREE.Mesh(geo, mat); mesh.position.set(x, y, z); mesh.castShadow = true; g.add(mesh); return mesh }
+  if (style === 'bricks') {
+    // minifigura: piernas, cadera, torso trapezoidal, brazos, cabeza cilíndrica
+    for (const s of [-1, 1]) {
+      add(new THREE.BoxGeometry(0.19, 0.24, 0.21), M(f.legs), s * 0.1, 0.22, 0)
+      add(new THREE.BoxGeometry(0.19, 0.1, 0.23), M(f.boots), s * 0.1, 0.05, 0.01)
+    }
+    add(new THREE.BoxGeometry(0.4, 0.07, 0.2), M(f.legs), 0, 0.37, 0)
+    const torsoGeo = new THREE.BoxGeometry(0.42, 0.34, 0.2)
+    const p = torsoGeo.attributes.position
+    for (let i = 0; i < p.count; i++) if (p.getY(i) > 0) p.setX(i, p.getX(i) * 0.8)
+    torsoGeo.computeVertexNormals()
+    const plain = M(f.top)
+    add(torsoGeo, [plain, plain, plain, plain, styleMat(style, { map: torsoTexture(f, style) }), plain], 0, 0.575, 0)
+    for (const s of [-1, 1]) {
+      const arm = add(new THREE.CylinderGeometry(0.055, 0.06, 0.26, 12), M(f.arms || f.top), s * 0.22, 0.6, 0.02)
+      arm.rotation.z = s * 0.18
+      add(new THREE.CylinderGeometry(0.05, 0.05, 0.07, 12), M(f.hands || f.skin), s * 0.25, 0.44, 0.04)
+      if (f.pads) add(new THREE.SphereGeometry(0.08, 12, 8), M(f.pads), s * 0.2, 0.72, 0).scale.y = 0.6
+    }
+    add(new THREE.CylinderGeometry(0.06, 0.06, 0.03, 12), M(f.skin), 0, 0.76, 0)
+    const head = add(new THREE.CylinderGeometry(0.15, 0.15, 0.21, 32, 1, false, Math.PI, Math.PI * 2),
+      [styleMat(style, { map: faceTexture(f, style, 0.5, 30) }), M(f.skin), M(f.skin)], 0, 0.88, 0)
+    head.rotation.y = 0
+    add(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 16), M(f.skin), 0, 1.0, 0)
+    addHair(g, f, style, 0.93, 0.15)
+    if (f.cape) add(new THREE.BoxGeometry(0.46, 0.62, 0.03), M(f.cape), 0, 0.42, -0.13)
+  } else {
+    // chibi cartoon: cabeza grande y cuerpo pequeño, con contorno negro
+    for (const s of [-1, 1]) {
+      add(new THREE.CapsuleGeometry(0.07, 0.12, 4, 10), M(f.legs), s * 0.09, 0.15, 0)
+      add(new THREE.SphereGeometry(0.085, 14, 10), M(f.boots), s * 0.09, 0.05, 0.02).scale.set(1, 0.7, 1.3)
+      add(new THREE.CapsuleGeometry(0.05, 0.14, 4, 10), M(f.arms || f.top), s * 0.2, 0.38, 0).rotation.z = s * 0.35
+      add(new THREE.SphereGeometry(0.06, 12, 8), M(f.hands || f.skin), s * 0.26, 0.28, 0.01)
+    }
+    add(new THREE.CapsuleGeometry(0.15, 0.12, 6, 16), M(f.top), 0, 0.36, 0)
+    add(new THREE.TorusGeometry(0.15, 0.03, 8, 20), M(f.belt), 0, 0.27, 0).rotation.x = Math.PI / 2
+    add(new THREE.SphereGeometry(0.28, 32, 24), styleMat(style, { map: faceTexture(f, style, 0.25) }), 0, 0.74, 0)
+    addHair(g, f, style, 0.78, 0.28)
+    if (f.cape) add(new THREE.BoxGeometry(0.4, 0.45, 0.03), M(f.cape), 0, 0.33, -0.17)
+    // contorno (casco invertido)
+    const outline = new THREE.MeshBasicMaterial({ color: '#141020', side: THREE.BackSide })
+    const shells = []
+    g.traverse(o => { if (o.isMesh) shells.push(o) })
+    for (const o of shells) {
+      const sh = new THREE.Mesh(o.geometry, outline)
+      sh.position.copy(o.position); sh.rotation.copy(o.rotation); sh.scale.copy(o.scale).multiplyScalar(1.07)
+      o.parent.add(sh)
+    }
+  }
+  g.scale.setScalar(f.scale || 1)
+  return g
 }

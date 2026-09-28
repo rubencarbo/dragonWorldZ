@@ -108,7 +108,8 @@ const progressRepo = {
 // ============================================================ AJUSTES
 export const settings = reactive({
   moveMode: 'free', // 'free' | 'dice'
-  pixelSize: 1.5, // píxeles de pantalla por píxel de juego (ver createRetroRenderer)
+  pixelSize: 1, // píxeles de pantalla por píxel de juego (ver createRetroRenderer)
+  visualStyle: 'bricks', // estilo gráfico del mundo: bricks | toon | pixel
   music: 0.5,
   ...LS.get('settings', {}),
   update (patch) {

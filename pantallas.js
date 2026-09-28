@@ -7,7 +7,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import * as THREE from 'three'
 import {
-  createRetroRenderer, attachGestures, pointerNDC, buildPlanet, surfacePoint, latLonToDir, greatCirclePoints, starfield,
+  createRetroRenderer, attachGestures, pointerNDC, latLonToDir, greatCirclePoints, starfield,
+  buildDiorama, landmarkModel, heroModel, VISUAL_STYLES,
   characterModel, characterName, spriteToVoxels, kintonModel, propModel, treeModel, imageToGrid, extractSprite, chiptune,
   findPath, isLocationUnlocked, validateMission
 } from './motor.js'
@@ -111,12 +112,15 @@ export const GlobeView = {
       'Puar se transforma en nube para volar a tu lado un rato. +10 zenis'
     ]
 
-    let r3, scene, camera, world3, planet, player, raf, refit, detachGestures
+    let r3, scene, camera, world3, planet, player, raf, refit, detachGestures, diorama, standObj
     let markers = []
     let waypointGroup
     const followQ = new THREE.Quaternion()
     let autoFollow = true
     let playerDir = new THREE.Vector3(0, 1, 0)
+    const style = VISUAL_STYLES[settings.visualStyle] ? settings.visualStyle : 'bricks'
+    const R = () => viewWorld.value.radius
+    const S = () => viewWorld.value.decoScale || 0.42
 
     const unlocked = loc => isLocationUnlocked(loc, game.progress.completed)
     const isHere = loc => game.progress.worldId === viewWorld.value.id && game.progress.locationId === loc.id && !transit.value
@@ -124,36 +128,36 @@ export const GlobeView = {
 
     function buildWorld () {
       if (world3) scene.remove(world3)
+      if (standObj) scene.remove(standObj)
       const w = viewWorld.value
+      diorama = buildDiorama(w, style)
       world3 = new THREE.Group()
-      planet = buildPlanet(w)
-      world3.add(planet)
-      scene.background = new THREE.Color(w.sky)
+      world3.add(diorama.planet)
+      planet = diorama.sphere
+      standObj = diorama.stand
+      scene.add(standObj)
+      stage.value.style.background = w.bg || w.sky
       markers = []
       for (const loc of w.locations) {
-        const pos = surfacePoint(w, loc.lat, loc.lon)
-        const dir = pos.clone().normalize()
+        const dir = latLonToDir(loc.lat, loc.lon)
         const holder = new THREE.Group()
-        holder.position.copy(pos)
+        holder.position.copy(diorama.surface(dir))
         holder.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir)
-        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 0.12, 6), new THREE.MeshLambertMaterial({ color: '#c9a36b', flatShading: true }))
-        base.position.y = 0.02
-        holder.add(base)
-        const kind = { cabin: 'cabin', kamehouse: 'kamehouse', dome: 'dome', tower: 'tower' }[loc.landmark] || 'cabin'
-        const model = propModel({ kind })
-        model.scale.setScalar(kind === 'tower' ? 0.55 : 0.4)
-        model.position.y = 0.08
+        const model = landmarkModel(loc.landmark, style)
+        const size = S() * (loc.landmark === 'kaiohouse' ? 2.1 : 1.25)
+        model.scale.setScalar(size)
         holder.add(model)
         const locked = w.locked || !unlocked(loc)
-        const beacon = new THREE.Mesh(new THREE.OctahedronGeometry(0.1), new THREE.MeshBasicMaterial({ color: locked ? '#777' : '#ffd23c' }))
-        beacon.position.y = kind === 'tower' ? 1.3 : 0.75
+        const beacon = new THREE.Mesh(new THREE.OctahedronGeometry(0.09 * size / 0.5),
+          new THREE.MeshStandardMaterial({ color: locked ? '#8a8a96' : '#ffd23c', emissive: locked ? '#222' : '#a06a00', roughness: 0.3 }))
+        beacon.position.y = (loc.landmark === 'tower' ? 3 : 1.35) * size
         holder.add(beacon)
         // zona táctil generosa para dedos
-        const hitArea = new THREE.Mesh(new THREE.SphereGeometry(0.75, 6, 4), new THREE.MeshBasicMaterial())
-        hitArea.position.y = 0.4
+        const hitArea = new THREE.Mesh(new THREE.SphereGeometry(0.9 * size, 6, 4), new THREE.MeshBasicMaterial())
+        hitArea.position.y = 0.5 * size
         hitArea.visible = false
         holder.add(hitArea)
-        holder.userData = { loc, beacon }
+        holder.userData = { loc, beacon, baseY: beacon.position.y }
         holder.traverse(o => { o.userData.loc = loc })
         world3.add(holder)
         markers.push(holder)
@@ -165,35 +169,36 @@ export const GlobeView = {
       if (w.id === game.progress.worldId) {
         const here = w.locations.find(l => l.id === game.progress.locationId) || w.locations[0]
         playerDir = latLonToDir(here.lat, here.lon)
-        if (!player) createPlayer()
+        createPlayer()
         world3.add(player)
-        player.visible = true
         placePlayer(playerDir)
         focusOn(playerDir, true)
-      } else if (player) {
-        player.visible = false
+      } else {
+        player = null
         focusOn(latLonToDir(w.locations[0].lat, w.locations[0].lon), true)
       }
     }
 
     function createPlayer () {
       player = new THREE.Group()
-      const hero = characterModel(game.spriteOf(), 0.06)
-      hero.position.y = 0.15
+      const hero = heroModel(game.spriteOf(), style)
+      hero.scale.multiplyScalar(S() * 1.5)
+      hero.position.y = S() * 0.3
       const cloud = kintonModel()
-      cloud.scale.setScalar(0.7)
+      cloud.scale.setScalar(S() * 1.6)
       player.add(cloud, hero)
     }
 
     function placePlayer (dir) {
-      const w = viewWorld.value
-      player.position.copy(dir.clone().multiplyScalar(w.radius * 1.08 + 1.1))
+      // flotando por encima del lugar (sin tapar la casa)
+      player.position.copy(diorama.surface(dir, S() * 3.4))
       player.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize())
     }
 
     // Gira el mundo para que `dir` quede mirando a la cámara
     function focusOn (dir, instant = false) {
-      const target = new THREE.Vector3(0, 0.35, 1).normalize()
+      // el lugar queda en la parte alta del planeta, de pie y visto de lado (como en la maqueta)
+      const target = new THREE.Vector3(0, 0.62, 0.78).normalize()
       followQ.setFromUnitVectors(dir.clone().normalize(), target)
       autoFollow = true
       if (instant) world3.quaternion.copy(followQ)
@@ -256,8 +261,8 @@ export const GlobeView = {
       transit.value.points.forEach((d, i) => {
         if (i < transit.value.index) return
         const event = i % 3 === 2 && i !== transit.value.points.length - 1
-        const m = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.05, 0.14), new THREE.MeshBasicMaterial({ color: event ? '#d6333a' : '#ffd23c' }))
-        m.position.copy(d.clone().multiplyScalar(w.radius * 1.08 + 0.05))
+        const m = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 16), new THREE.MeshStandardMaterial({ color: event ? '#d6333a' : '#ffd23c' }))
+        m.position.copy(diorama.surface(d, 0.03))
         m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d)
         waypointGroup.add(m)
       })
@@ -311,7 +316,7 @@ export const GlobeView = {
     const MAX_ZOOM = 6
     // zoom máximo = vista regional: siempre se ven ~3 unidades de ancho (varios lugares)
     let hHalfFov = 0.3
-    const minDist = () => viewWorld.value.radius + Math.max(2.5, 1.6 / Math.tan(hHalfFov))
+    const minDist = () => viewWorld.value.radius + Math.max(1.6, 1.25 / Math.tan(hHalfFov))
     const targetDist = () => Math.max(minDist(), maxDist / zoom)
     let dragging = false
     let dragTimer
@@ -350,27 +355,30 @@ export const GlobeView = {
     }
 
     onMounted(() => {
-      r3 = createRetroRenderer(stage.value, { pixelSize: settings.pixelSize })
+      // la maqueta se ve a resolución nativa salvo en el estilo pixel-art
+      r3 = createRetroRenderer(stage.value, { pixelSize: style === 'pixel' ? Math.max(2.5, settings.pixelSize) : settings.pixelSize, alpha: true })
       scene = new THREE.Scene()
-      camera = new THREE.PerspectiveCamera(40, 1, 0.05, 200)
+      camera = new THREE.PerspectiveCamera(36, 1, 0.05, 300)
       camera.position.set(0, 0, 17)
       r3.onResize = fitCamera
       function fitCamera (w = stage.value.clientWidth, h = stage.value.clientHeight) {
         camera.aspect = w / h
-        // distancia para que el planeta quepa también en horizontal (móvil en vertical)
-        const r = viewWorld.value.radius * 1.25
+        // encuadre: planeta + peana (de +1,05R a -1,8R), también en vertical en el móvil
         const vHalf = THREE.MathUtils.degToRad(camera.fov / 2)
         const hHalf = Math.atan(Math.tan(vHalf) * camera.aspect)
         hHalfFov = Math.min(hHalf, vHalf)
-        maxDist = Math.max(r / Math.sin(vHalf), r / Math.sin(hHalf))
+        maxDist = Math.max((R() * 1.5) / Math.tan(vHalf), (R() * 1.12) / Math.tan(hHalf)) + R()
         camera.position.z = targetDist()
         camera.updateProjectionMatrix()
       }
       refit = () => { zoom = 1; fitCamera() }
-      scene.add(new THREE.AmbientLight('#8890c0', 1.2))
-      const sun = new THREE.DirectionalLight('#fff4d6', 2.2)
-      sun.position.set(6, 8, 10)
-      scene.add(sun, starfield())
+      scene.add(new THREE.HemisphereLight('#ffffff', '#6a4ab0', style === 'toon' ? 1.6 : 1.1))
+      const sun = new THREE.DirectionalLight('#fff6e6', style === 'toon' ? 1.6 : 2.4)
+      sun.position.set(-6, 10, 9)
+      const fill = new THREE.DirectionalLight('#c8d8ff', 0.8)
+      fill.position.set(8, 2, 6)
+      scene.add(sun, fill)
+      if (style === 'pixel') scene.add(starfield())
       buildWorld()
 
       detachGestures = attachGestures(r3.canvas, { onTap: pick, onDrag, onZoom: zoomBy })
@@ -381,11 +389,17 @@ export const GlobeView = {
         if (autoFollow) world3.quaternion.slerp(followQ, 0.08)
         else if (!dragging && zoom < 1.05) world3.rotateY(0.0008)
         camera.position.z += (targetDist() - camera.position.z) * 0.15
+        // con el planeta entero se centra la maqueta (peana incluida); al acercarse,
+        // la vista sube hacia la zona alta, donde están el lugar actual y el personaje
+        const k = THREE.MathUtils.clamp((camera.position.z - minDist()) / Math.max(0.01, maxDist - minDist()), 0, 1)
+        const lookY = THREE.MathUtils.lerp(R() * 0.5, -R() * 0.38, k)
+        camera.position.y = lookY
+        camera.lookAt(0, lookY, 0)
         for (const m of markers) {
           m.userData.beacon.rotation.y = t * 2
-          m.userData.beacon.position.y += Math.sin(t * 3) * 0.002
+          m.userData.beacon.position.y = m.userData.baseY + Math.sin(t * 3) * 0.05
         }
-        if (player?.children[1]) player.children[1].position.y = 0.15 + Math.sin(t * 4) * 0.03
+        if (player?.children[1]) player.children[1].position.y = S() * 0.3 + Math.sin(t * 4) * S() * 0.06
         r3.renderer.render(scene, camera)
         raf = requestAnimationFrame(loop)
       }
@@ -815,6 +829,11 @@ export const SettingsView = {
 
       <section class="card">
         <h2>Imagen y sonido</h2>
+        <label class="row">Estilo gráfico
+          <select :value="settings.visualStyle" @change="settings.update({ visualStyle: $event.target.value })">
+            <option v-for="(st, id) in VISUAL_STYLES" :key="id" :value="id">{{ st.name }}</option>
+          </select>
+        </label>
         <label class="row">Resolución
           <select :value="settings.pixelSize" @change="settings.update({ pixelSize: Number($event.target.value) })">
             <option :value="1">HD (nítido)</option>
@@ -840,7 +859,7 @@ export const SettingsView = {
     function reset () {
       if (confirm('¿Seguro? Se perderá todo el progreso.')) game.reset()
     }
-    return { settings, firebaseEnabled, reset }
+    return { settings, firebaseEnabled, reset, VISUAL_STYLES }
   }
 }
 
