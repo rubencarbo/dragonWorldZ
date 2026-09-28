@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rpsWinner, tttWinner, tttAiMove, makeRhymeRound, rhymeKey, RHYMES, followSwaps, randomSwaps } from '../minijuegos.js'
+import { rpsWinner, tttWinner, tttAiMove, makeRhymeRound, rhymeKey, RHYMES, followSwaps, randomSwaps, makeQuizRounds, QUIZ, needleAt, inZone, makeDeck } from '../minijuegos.js'
 import { findPath, validateMission, visibleSpawns, isMissionAvailable, resolveInteraction } from '../motor.js'
 import { parsePattern, noteToFreq } from '../motor.js'
 import { SEED_MISSIONS } from '../mundos.js'
@@ -8,7 +8,7 @@ import { CHARACTERS, PALETTE, FORMS } from '../personajes.js'
 import { TRACKS } from '../mundos.js'
 import { WORLDS } from '../mundos.js'
 
-const GAMES = ['rps', 'tictactoe', 'rhyme', 'kiseq', 'shell']
+const GAMES = ['rps', 'tictactoe', 'rhyme', 'kiseq', 'shell', 'quiz', 'reflex', 'memory']
 
 describe('minijuegos', () => {
   it('piedra papel tijera', () => {
@@ -28,6 +28,23 @@ describe('minijuegos', () => {
       expect(new Set(r.options).size).toBe(4)
       expect(r.options.filter(o => rhymeKey(o) === rhymeKey(r.answer))).toHaveLength(1)
     }
+  })
+  it('examen: cada pregunta tiene 4 opciones distintas con la correcta', () => {
+    for (const topic of Object.keys(QUIZ)) {
+      for (const r of makeQuizRounds(topic, 99)) {
+        expect(r.options).toContain(r.answer)
+        expect(new Set(r.options).size).toBe(4)
+      }
+    }
+  })
+  it('reflejos y memoria', () => {
+    expect(needleAt(0, 1)).toBe(0)
+    expect(needleAt(0.5, 1)).toBe(0.5)
+    expect(needleAt(1.5, 1)).toBe(0.5)
+    expect(inZone(0.3, [0.2, 0.4])).toBe(true)
+    const deck = makeDeck(6)
+    expect(deck).toHaveLength(12)
+    for (const c of deck) expect(deck.filter(d => d.name === c.name)).toHaveLength(2)
   })
   it('trile: seguir los intercambios', () => {
     expect(followSwaps(0, [[0, 1], [1, 2]])).toBe(2)
@@ -63,6 +80,21 @@ describe('motor', () => {
 describe('datos', () => {
   it('todas las misiones semilla son válidas', () => {
     for (const m of SEED_MISSIONS) expect(validateMission(m, { maps: MAPS, games: GAMES }), m.id).toEqual([])
+  })
+  it('cada lugar con mapa tiene al menos 2 misiones y ningún spawn pisa otro objeto', () => {
+    for (const id of Object.keys(MAPS)) {
+      const ms = SEED_MISSIONS.filter(m => m.locationId === id)
+      expect(ms.length, id).toBeGreaterThanOrEqual(2)
+      for (const m of ms) {
+        for (let step = 0; step < m.steps.length; step++) {
+          const visible = [...MAPS[id].props, ...visibleSpawns(m, step)]
+          const cells = visible.map(p => `${p.x},${p.y}`)
+          expect(new Set(cells).size, `${m.id} paso ${step}`).toBe(cells.length)
+          expect(visible.some(p => p.id === m.steps[step].target), `${m.id} paso ${step}: objetivo visible`).toBe(true)
+          expect(`${MAPS[id].start}`, `${m.id}: inicio libre`).not.toBe(cells.find(c => c === `${MAPS[id].start}`))
+        }
+      }
+    }
   })
   it('mapas rectangulares, con tiles conocidos y props sobre casillas transitables', () => {
     for (const [id, map] of Object.entries(MAPS)) {

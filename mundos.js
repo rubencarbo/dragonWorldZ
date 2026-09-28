@@ -23,7 +23,7 @@ export const WORLDS = [
     locations: [
       { id: 'paoz', name: 'Montaña Paoz', lat: 32, lon: -20, landmark: 'cabin', map: 'paoz',
         desc: 'Bosques, ríos y la casita donde el abuelo Gohan crió a Goku.' },
-      { id: 'kame', name: 'Kame House', lat: -8, lon: 38, landmark: 'kamehouse', map: 'kame', requires: 'm_esfera4',
+      { id: 'kame', name: 'Kame House', lat: -8, lon: 38, landmark: 'kamehouse', map: 'kame', requires: 'm_gohan_estudia',
         desc: 'Una isla diminuta en mitad del mar. El Maestro Roshi entrena (y lee revistas) aquí.' },
       { id: 'capsule', name: 'Capsule Corp', lat: 22, lon: 85, landmark: 'dome', map: 'capsule', requires: 'm_roshi_rimas',
         desc: 'La cúpula de la familia Brief en la Capital del Oeste. Todo cabe en una cápsula.' },
@@ -51,6 +51,7 @@ export const WORLDS = [
     trees: 9,
     flowers: 60,
     snakeWay: true,
+    stand: true, // peana con nubes y placa, como la maqueta de referencia
     plaque: 'Planeta de Kaio',
     extras: [
       { kind: 'car', lat: 43, lon: -52, spin: 2.2, scale: 1.3 },
@@ -156,6 +157,8 @@ export const MAPS = {
         lines: [{ who: 'Goku', text: 'Mi casa. Huele a arroz y a leña. ¡Qué hambre!' }] },
       { id: 'altar', kind: 'altar', x: 4, y: 2, name: 'Altar del abuelo',
         lines: [{ who: 'Goku', text: 'Abuelito, hoy también voy a entrenar mucho.' }] },
+      { id: 'chichi_npc', kind: 'npc', sprite: 'chichi', x: 3, y: 3, name: 'Chichí',
+        lines: [{ who: 'Chichí', text: '¡Goku! Si ves a Gohan jugando en vez de estudiar, me lo traes. ¡Y lávate las manos antes de cenar!' }] },
       { id: 'cartel', kind: 'sign', x: 7, y: 12, name: 'Cartel',
         lines: [{ who: 'Cartel', text: '«MONTAÑA PAOZ. Cuidado con los dinosaurios. Y con los tigres. Y con Goku.»' }] }
     ]
@@ -184,6 +187,8 @@ export const MAPS = {
         lines: [{ who: 'Roshi', text: 'Jo, jo, jo. ¿Has traído alguna revista... educativa?' }] },
       { id: 'krilin_npc', kind: 'npc', sprite: 'krilin', x: 8, y: 7, name: 'Krilin',
         lines: [{ who: 'Krilin', text: '¡Eh! Yo llegué primero. El maestro es mío... bueno, compartimos.' }] },
+      { id: 'umigame', kind: 'turtle', x: 4, y: 8, name: 'Umigame',
+        lines: [{ who: 'Umigame', text: 'Llevo mil años viviendo con el Maestro Roshi. He visto cosas... que es mejor no contar.' }] },
       { id: 'palmera', kind: 'palm', x: 3, y: 4, name: 'Palmera',
         lines: [{ who: 'Goku', text: 'Una palmera. Tiene cocos. ¿Se comerán?' }] }
     ]
@@ -250,22 +255,32 @@ export const MAPS = {
 // Tipos de paso:
 //   talk    → hablar con un prop/npc (target)
 //   goto    → acercarse a un prop (target)
-//   battle  → minijuego contra un rival (game: rps | tictactoe | rhyme | kiseq | shell)
+//   battle  → minijuego contra un rival
+//             (game: rps | tictactoe | rhyme | kiseq | shell | quiz | reflex | memory)
 //   collect → recoger un objeto (target) → se añade al inventario (item)
 // "spawns" añade props al mapa mientras la misión está activa, entre los pasos
-// fromStep y untilStep (incluidos).
+// fromStep y untilStep (incluidos). "playAs" cambia el personaje durante la
+// misión (p. ej. Goku niño en un recuerdo).
+//
+// GUION · MUNDO 1: LA TIERRA (de la infancia de Goku a la llegada de Raditz)
+//   Montaña Paoz  → recuerdo de la esfera · Gohan tiene que estudiar · la cena de los Saiyans
+//   Kame House    → la reunión · las gafas de Roshi · el hermano del espacio (Raditz)
+//   Capsule Corp  → el radar del dragón · el lío de las cápsulas · el scouter de Raditz
+//   Torre Karin   → el agua ultrasagrada · las adivinanzas de Karin
 
 export const SEED_MISSIONS = [
+  // ---------------------------------------------------------------- MONTAÑA PAOZ
   {
     id: 'm_esfera4',
     pack: 'base',
     worldId: 'tierra',
     locationId: 'paoz',
-    title: 'La esfera de cuatro estrellas',
-    summary: 'El recuerdo más valioso del abuelo Gohan ha desaparecido del altar.',
+    playAs: 'goku_nino',
+    title: 'Recuerdo: la esfera de cuatro estrellas',
+    summary: 'Años atrás, un Goku muy pequeño pierde el tesoro de su abuelo... por culpa de un dinosaurio con hambre.',
     music: 'paoz',
     intro: [
-      { who: 'Narrador', text: 'Montaña Paoz. Amanece. Un niño con cola se despierta con hambre de dinosaurio...' },
+      { who: 'Narrador', text: 'Hace muchos años, en la Montaña Paoz, vivía un niño con cola que comía más que diez leñadores.' },
       { who: 'Goku', text: '¡Buenos días, abuelito! ...¿Eh? ¿Dónde está tu esfera?' }
     ],
     spawns: [
@@ -274,10 +289,10 @@ export const SEED_MISSIONS = [
       { id: 'esfera4', kind: 'ball', stars: 4, x: 10, y: 11, name: 'Esfera de 4 estrellas', fromStep: 3, untilStep: 3 }
     ],
     steps: [
-      { type: 'talk', target: 'altar', hint: 'Mira el altar del abuelo.',
+      { type: 'talk', target: 'altar', hint: 'Mira el altar del abuelo (junto a la casa).',
         lines: [
           { who: 'Goku', text: 'El cojín está vacío... ¡La esfera de cuatro estrellas no está!' },
-          { who: 'Goku', text: 'Hay barro en el suelo. Algo muy grande ha pasado por aquí.' }
+          { who: 'Goku', text: 'Hay barro en el suelo. Algo MUY grande ha pasado por aquí.' }
         ] },
       { type: 'goto', target: 'huellas', hint: 'Sigue el rastro hacia el río.',
         lines: [
@@ -287,46 +302,223 @@ export const SEED_MISSIONS = [
       { type: 'battle', target: 'dino', game: 'rps', config: { bestOf: 3 }, hint: 'Enfréntate al dinosaurio.',
         lines: [
           { who: 'Dinosaurio', text: '¡GROAAAR! (Se relame. Tiene algo brillante entre los dientes.)' },
-          { who: 'Goku', text: '¡Devuélvemela! Te reto al Jan-Ken: ¡Piedra, papel o tijera!' }
+          { who: 'Goku', text: '¡Devuélvemela! Te reto al Jan-Ken: ¡piedra, papel o tijera!' }
         ],
         win: [{ who: 'Dinosaurio', text: '¡GROA...! ¡Achís! (La esfera sale disparada y rueda por la hierba.)' }],
-        lose: [{ who: 'Dinosaurio', text: '¡GROAR! (Se ríe. Parece que quiere la revancha.)' }] },
+        lose: [{ who: 'Dinosaurio', text: '¡GROAR! (Se ríe con la boca llena. Quiere la revancha.)' }] },
       { type: 'collect', target: 'esfera4', item: 'esfera_4', hint: 'Recoge la esfera.',
         lines: [
           { who: 'Goku', text: '¡La tengo! Brilla como un sol pequeñito... Abuelito, ya estás en casa.' },
-          { who: '???', text: '(A lo lejos, una chica de pelo turquesa mira un aparato que pita sin parar...)' }
+          { who: 'Narrador', text: 'Años después, esa misma esfera brillará en el sombrero del hijo de Goku...' }
         ] }
     ],
     reward: { zeni: 100, items: [], characters: [] }
   },
   {
+    id: 'm_gohan_estudia',
+    pack: 'base',
+    worldId: 'tierra',
+    locationId: 'paoz',
+    requires: ['m_esfera4'],
+    title: '¡Gohan tiene que estudiar!',
+    summary: 'Chichí quiere un hijo investigador. Gohan quiere perseguir mariposas. Goku... quiere comer.',
+    music: 'paoz',
+    intro: [
+      { who: 'Narrador', text: 'Montaña Paoz, cinco años después. Goku ya es padre... y Chichí tiene un plan: ¡su hijo será un gran investigador!' }
+    ],
+    spawns: [
+      { id: 'huellas_gohan', kind: 'footprints', x: 8, y: 6, name: 'Huellas pequeñitas', fromStep: 1, untilStep: 1 },
+      { id: 'gohan', kind: 'npc', sprite: 'gohan', x: 12, y: 5, name: 'Gohan', fromStep: 1, untilStep: 3 }
+    ],
+    steps: [
+      { type: 'talk', target: 'chichi_npc', hint: 'Habla con Chichí.',
+        lines: [
+          { who: 'Chichí', text: '¡Goku! Gohan se ha escapado OTRA VEZ en mitad de la lección de álgebra.' },
+          { who: 'Chichí', text: 'Tráelo de vuelta. ¡Y ni se te ocurra enseñarle a pelear!' },
+          { who: 'Goku', text: 'Jejeje... vale, vale.' }
+        ] },
+      { type: 'goto', target: 'huellas_gohan', hint: 'Busca pistas de Gohan.',
+        lines: [
+          { who: 'Goku', text: 'Huellas pequeñitas... y un libro abandonado: «Matemáticas para genios de cuatro años».' },
+          { who: 'Goku', text: 'Van hacia el río. ¡Gohan, sal de donde estés!' }
+        ] },
+      { type: 'talk', target: 'gohan', hint: 'Encuentra a Gohan junto al río.',
+        lines: [
+          { who: 'Gohan', text: '¡Papá! No me escapé... ¡estaba estudiando a los peces! Eso también es ciencia.' },
+          { who: 'Goku', text: 'Jajaja. Anda, volvamos, que tu madre da más miedo que un dinosaurio.' }
+        ] },
+      { type: 'battle', target: 'chichi_npc', game: 'quiz', config: { topic: 'examen', rounds: 5, seconds: 12 }, hint: 'Supera el examen de Chichí.',
+        lines: [
+          { who: 'Chichí', text: 'Para comprobar que ha estudiado... ¡un examen! Y tú también, Goku. Ayúdale.' },
+          { who: 'Goku', text: '¿Un examen? Prefiero pelear con Piccolo...' }
+        ],
+        win: [
+          { who: 'Chichí', text: '¡Sobresaliente! Bueno... podéis ir a visitar a vuestros amigos a Kame House.' },
+          { who: 'Gohan', text: '¡Bieeen! ¿Me llevas en la Nube Kinton, papá?' }
+        ],
+        lose: [{ who: 'Chichí', text: '¡Suspenso! Otra vez a la mesa. ¡Y nada de postre!' }] }
+    ],
+    reward: { zeni: 120, items: [], characters: ['gohan'] }
+  },
+  {
+    id: 'm_cena',
+    pack: 'base',
+    worldId: 'tierra',
+    locationId: 'paoz',
+    requires: ['m_gohan_estudia'],
+    title: 'La cena de los Saiyans',
+    summary: 'La despensa está vacía y en casa hay dos estómagos Saiyan. Toca pescar... a lo grande.',
+    music: 'paoz',
+    intro: [
+      { who: 'Chichí', text: '¡No queda NADA en la despensa! Y vosotros dos coméis por veinte.' }
+    ],
+    spawns: [
+      { id: 'pesca', kind: 'fishspot', x: 8, y: 7, name: 'Poza del río', fromStep: 1, untilStep: 1 }
+    ],
+    steps: [
+      { type: 'talk', target: 'chichi_npc', hint: 'Habla con Chichí.',
+        lines: [
+          { who: 'Chichí', text: 'Traedme el pez más grande del río. ¡Y sin destrozar la cocina como la última vez!' },
+          { who: 'Goku', text: '¡Hecho! Gohan, hoy aprendes el método Son: ¡pescar con la cola!' }
+        ] },
+      { type: 'battle', target: 'pesca', game: 'reflex', config: { theme: 'fish', rounds: 3 }, hint: 'Pesca el pez gigante en la poza.',
+        lines: [
+          { who: 'Gohan', text: '¡Papá, algo enorme está mordiendo mi cola!' },
+          { who: 'Goku', text: '¡Espera a que pique y tira justo en el momento! ¡Ahora no... ahora no... AHORA!' }
+        ],
+        win: [{ who: 'Narrador', text: '¡Un pez tan grande como la casa! Esa noche nadie pasa hambre en la Montaña Paoz.' }],
+        lose: [{ who: 'Narrador', text: 'El pez se escapa salpicando a Goku de arriba abajo. Gohan no puede parar de reír.' }] },
+      { type: 'talk', target: 'chichi_npc', hint: 'Lleva la cena a Chichí.',
+        lines: [
+          { who: 'Chichí', text: '¡Así me gusta! Aunque... ¿cómo pensáis meter esto en la cazuela?' },
+          { who: 'Goku', text: '¡Por partes! Jejeje. ¿Hay postre?' }
+        ] }
+    ],
+    reward: { zeni: 80, items: [], characters: [] }
+  },
+
+  // ---------------------------------------------------------------- KAME HOUSE
+  {
     id: 'm_roshi_rimas',
     pack: 'base',
     worldId: 'tierra',
     locationId: 'kame',
-    requires: ['m_esfera4'],
-    title: 'Las rimas de la tortuga',
-    summary: 'El Maestro Roshi solo entrena a quien sepa rimar... y traer buenas noticias.',
+    requires: ['m_gohan_estudia'],
+    title: 'La reunión en Kame House',
+    summary: 'Los viejos amigos se reúnen... y descubren que Goku tiene un hijo. Roshi lo celebra a su manera.',
     music: 'kame',
     intro: [
-      { who: 'Narrador', text: 'Una isla, una casa rosa y un anciano con gafas de sol que no deja de sonreír.' }
+      { who: 'Narrador', text: 'Cinco años después del último Torneo de Artes Marciales, los amigos se reúnen en la isla del Maestro Roshi.' }
+    ],
+    spawns: [
+      { id: 'gohan_k', kind: 'npc', sprite: 'gohan', x: 5, y: 6, name: 'Gohan', fromStep: 0 }
     ],
     steps: [
+      { type: 'talk', target: 'krilin_npc', hint: 'Saluda a Krilin.',
+        lines: [
+          { who: 'Krilin', text: '¡Goku! ¡Cuánto tiempo! ¿Y ese niño que se esconde detrás de ti?' },
+          { who: 'Goku', text: '¡Es mi hijo! Se llama Gohan, como mi abuelo.' },
+          { who: 'Krilin', text: '¿¡TU HIJO!? ¡Si tú no sabías ni lo que era casarse!' }
+        ] },
       { type: 'talk', target: 'roshi', hint: 'Habla con el Maestro Roshi.',
         lines: [
-          { who: 'Roshi', text: '¿Quieres ser mi alumno? El cuerpo se entrena con leche y piedras...' },
-          { who: 'Roshi', text: '...¡pero la mente se entrena con RIMAS! Si ganas, te enseño algo especial.' }
+          { who: 'Roshi', text: 'Jo, jo, jo... Y lleva la esfera de cuatro estrellas en el sombrero. ¡Qué recuerdos!' },
+          { who: 'Roshi', text: 'Celebremos el reencuentro como en mis tiempos: ¡con un duelo de rimas!' }
         ] },
       { type: 'battle', target: 'roshi', game: 'rhyme', config: { rounds: 5, seconds: 8 }, hint: 'Duelo de rimas con Roshi.',
-        lines: [{ who: 'Roshi', text: 'Yo digo una palabra, tú eliges la que rima. ¡Rápido como una tortuga voladora!' }],
+        lines: [{ who: 'Roshi', text: 'Yo digo una palabra y tú eliges la que rima. ¡El que pierda friega los platos!' }],
         win: [
-          { who: 'Roshi', text: '¡Jo, jo! Tienes oído de campeón. Toma, Krilin entrenará contigo.' },
-          { who: 'Krilin', text: 'Bueno... vale. ¡Pero el que pierda friega los platos!' }
+          { who: 'Roshi', text: '¡Jo, jo! Tienes oído de campeón.' },
+          { who: 'Krilin', text: 'Pues me toca fregar a mí... como siempre.' }
         ],
-        lose: [{ who: 'Roshi', text: 'Mmm... vuelve cuando hayas leído más. Poesía, digo.' }] }
+        lose: [{ who: 'Roshi', text: '¡A fregar, Goku! Jo, jo, jo.' }] }
     ],
     reward: { zeni: 150, items: [], characters: ['krilin'] }
   },
+  {
+    id: 'm_gafas_roshi',
+    pack: 'base',
+    worldId: 'tierra',
+    locationId: 'kame',
+    requires: ['m_roshi_rimas'],
+    title: '¿Dónde están mis gafas?',
+    summary: 'El Maestro Roshi no ve nada sin sus gafas de sol. Umigame las escondió... y no recuerda dónde.',
+    music: 'kame',
+    intro: [
+      { who: 'Roshi', text: '¡Sin mis gafas de sol no distingo a Krilin de una bola de billar!' },
+      { who: 'Krilin', text: '¡Oiga!' }
+    ],
+    steps: [
+      { type: 'talk', target: 'roshi', hint: 'Habla con Roshi.',
+        lines: [{ who: 'Roshi', text: 'Umigame siempre lo guarda todo. ¡Pregúntale a ella!' }] },
+      { type: 'talk', target: 'umigame', hint: 'Pregunta a Umigame (la tortuga).',
+        lines: [
+          { who: 'Umigame', text: 'Las escondí bajo una concha para que nadie las pisara... pero no recuerdo cuál.' },
+          { who: 'Umigame', text: 'Las moveré despacio... bueno, despacio para ser una tortuga.' }
+        ] },
+      { type: 'battle', target: 'umigame', game: 'shell', config: { rounds: 3, swaps: 5, item: 'gafas' }, hint: 'Sigue la concha con las gafas.',
+        lines: [{ who: 'Umigame', text: '¡Atento! Concha, concha, concha...' }],
+        win: [{ who: 'Roshi', text: '¡Mis gafas! Ahora lo veo todo clarísimo... ¡Anda, si se ha hecho de noche! Jo, jo.' }],
+        lose: [{ who: 'Umigame', text: 'Uy, esa concha estaba vacía. Solo había un cangrejo muy ofendido.' }] }
+    ],
+    reward: { zeni: 90, items: [], characters: [] }
+  },
+  {
+    id: 'm_raditz',
+    pack: 'base',
+    worldId: 'tierra',
+    locationId: 'kame',
+    requires: ['m_roshi_rimas'],
+    title: 'El hermano del espacio',
+    summary: 'Un guerrero con armadura aterriza en la isla. Dice ser el hermano de Goku... y viene a por Gohan.',
+    music: 'batalla',
+    intro: [
+      { who: 'Narrador', text: 'De repente, algo cae del cielo junto a la isla. De la nave sale un guerrero con armadura y una melena interminable...' }
+    ],
+    spawns: [
+      { id: 'gohan_r', kind: 'npc', sprite: 'gohan', x: 5, y: 6, name: 'Gohan', fromStep: 0, untilStep: 2 },
+      { id: 'raditz', kind: 'npc', sprite: 'raditz', x: 7, y: 2, name: 'Raditz', fromStep: 0, untilStep: 2 },
+      { id: 'piccolo_k', kind: 'npc', sprite: 'piccolo', x: 3, y: 6, name: 'Piccolo', fromStep: 3 }
+    ],
+    steps: [
+      { type: 'talk', target: 'raditz', hint: 'Enfréntate al desconocido.',
+        lines: [
+          { who: 'Raditz', text: 'Así que tú eres Kakarotto. Has crecido... pero te has vuelto blando.' },
+          { who: 'Raditz', text: 'Soy Raditz, tu hermano mayor. Eres un Saiyan, enviado de bebé a conquistar este planeta.' },
+          { who: 'Goku', text: '¿Mi... hermano? ¡Yo me llamo Son Goku y la Tierra es mi hogar!' }
+        ] },
+      { type: 'battle', target: 'raditz', game: 'rps', config: { bestOf: 5 }, hint: 'Protege a Gohan de Raditz.',
+        lines: [
+          { who: 'Raditz', text: 'Si no te unes a mí, me llevaré a tu hijo.' },
+          { who: 'Goku', text: '¡No toques a Gohan! ¡Te reto al Jan-Ken, piedra, papel o tijera!' }
+        ],
+        win: [{ who: 'Raditz', text: '¡Grr! Tienes reflejos... pero mi nivel de pelea sigue siendo muy superior.' }],
+        lose: [{ who: 'Raditz', text: 'Patético. Mi scouter marca que tu nivel de pelea es solo de 334...' }] },
+      { type: 'talk', target: 'raditz', hint: 'Detén a Raditz.',
+        lines: [
+          { who: 'Raditz', text: '¡Me llevo al niño! Si quieres recuperarlo, elimina a cien terrícolas antes de mañana.' },
+          { who: 'Gohan', text: '¡Papááá!' },
+          { who: 'Narrador', text: 'Raditz despega con Gohan bajo el brazo. Entonces, una silueta con turbante aterriza en la arena...' }
+        ] },
+      { type: 'talk', target: 'piccolo_k', hint: 'Habla con Piccolo.',
+        lines: [
+          { who: 'Piccolo', text: 'Ese Saiyan es un estorbo para mis planes de conquistar la Tierra.' },
+          { who: 'Piccolo', text: 'Por esta vez lucharemos juntos, Goku. Tengo una técnica nueva: el Makankosappo.' },
+          { who: 'Goku', text: '¿Piccolo... ayudándome a mí? ¡Esto sí que no me lo esperaba!' }
+        ] },
+      { type: 'battle', target: 'piccolo_k', game: 'kiseq', config: { length: 7 }, hint: 'Carga el Makankosappo con Piccolo.',
+        lines: [{ who: 'Piccolo', text: 'Necesito tiempo para concentrar mi ki. ¡Repite mi secuencia y no falles!' }],
+        win: [
+          { who: 'Narrador', text: '¡El Makankosappo atraviesa a Raditz! Goku lo sujeta hasta el final... y se sacrifica para salvar a Gohan.' },
+          { who: 'Piccolo', text: 'Hmph. Las Esferas del Dragón te devolverán la vida. Mientras tanto, yo entrenaré al niño.' },
+          { who: 'Narrador', text: 'En el Más Allá, un camino de un millón de kilómetros espera a Goku... (Continuará en el Planeta de Kaio)' }
+        ],
+        lose: [{ who: 'Piccolo', text: '¡Demasiado lento! Concéntrate o Raditz escapará.' }] }
+    ],
+    reward: { zeni: 300, items: [], characters: ['piccolo'] }
+  },
+
+  // ---------------------------------------------------------------- CAPSULE CORP
   {
     id: 'm_radar',
     pack: 'base',
@@ -334,30 +526,89 @@ export const SEED_MISSIONS = [
     locationId: 'capsule',
     requires: ['m_roshi_rimas'],
     title: 'El radar del dragón',
-    summary: 'Bulma necesita calibrar su radar... y alguien se ha llevado la pieza clave.',
+    summary: 'Bulma necesita calibrar su radar... y alguien con cola de cerdo se ha llevado la pieza clave.',
     music: 'capsule',
     intro: [
-      { who: 'Narrador', text: 'Capital del Oeste. Coches voladores, robots y un laboratorio con olor a café.' }
+      { who: 'Narrador', text: 'Capital del Oeste. Coches voladores, robots y un laboratorio que huele a café recién hecho.' }
     ],
     steps: [
       { type: 'talk', target: 'bulma_npc', hint: 'Habla con Bulma.',
         lines: [
-          { who: 'Bulma', text: '¿Tú eres el chico de la esfera de cuatro estrellas? ¡Mi radar se ha vuelto loco!' },
+          { who: 'Bulma', text: '¡Goku! Justo a tiempo. ¡Mi radar del dragón se ha vuelto loco!' },
           { who: 'Bulma', text: 'Repite la secuencia de ki exactamente como la marque la pantalla. Sin fallar.' }
         ] },
       { type: 'battle', target: 'bulma_npc', game: 'kiseq', config: { length: 6 }, hint: 'Calibra el radar con Bulma.',
         lines: [{ who: 'Bulma', text: 'Rojo, azul, amarillo, verde... ¡Memoriza!' }],
-        win: [{ who: 'Bulma', text: '¡Perfecto! Solo falta el chip... ¡OOLONG! ¡Devuélvelo!' }],
+        win: [{ who: 'Bulma', text: '¡Perfecto! Solo falta el chip de antena... ¡OOLONG! ¡Devuélvelo ahora mismo!' }],
         lose: [{ who: 'Bulma', text: '¡Casi lo quemas! Venga, otra vez.' }] },
       { type: 'battle', target: 'oolong_npc', game: 'tictactoe', config: { level: 'normal' }, hint: 'Recupera el chip de Oolong.',
-        lines: [
-          { who: 'Oolong', text: '¿El chip? Te lo doy si me ganas al tres en raya. Me transformo en X, ¡y tú en O!' }
-        ],
-        win: [{ who: 'Oolong', text: 'Bah... toma tu chip. Pero me quedo con la nevera.' }],
+        lines: [{ who: 'Oolong', text: '¿El chip? Te lo doy si me ganas al tres en raya. ¡Yo soy la X y tú la esfera!' }],
+        win: [{ who: 'Oolong', text: 'Bah... toma tu chip. Pero la nevera sigue siendo mía.' }],
         lose: [{ who: 'Oolong', text: '¡Ja! Los cerdos también somos listos.' }] }
     ],
     reward: { zeni: 200, items: ['radar'], characters: ['bulma'] }
   },
+  {
+    id: 'm_capsulas',
+    pack: 'base',
+    worldId: 'tierra',
+    locationId: 'capsule',
+    requires: ['m_radar'],
+    title: 'El lío de las cápsulas',
+    summary: 'La madre de Bulma ha vaciado la caja de cápsulas para hacer sitio a sus galletas. ¡Hay que emparejarlas!',
+    music: 'capsule',
+    intro: [
+      { who: 'Bulma', text: '¡MAMÁ! ¿Has sacado todas las cápsulas de su caja para guardar galletas?' }
+    ],
+    steps: [
+      { type: 'talk', target: 'bulma_npc', hint: 'Habla con Bulma.',
+        lines: [
+          { who: 'Bulma', text: 'Cada cápsula tiene su pareja de repuesto. Si las emparejo mal... ¡podría salir una casa dentro del laboratorio!' },
+          { who: 'Goku', text: 'Yo tengo buena memoria para la comida. ¡Seguro que para esto también!' }
+        ] },
+      { type: 'battle', target: 'capsulas', game: 'memory', config: { pairs: 6 }, hint: 'Empareja las cápsulas.',
+        lines: [{ who: 'Bulma', text: 'Destápalas de dos en dos. ¡Y cuidado con la número 7, que es un avión!' }],
+        win: [{ who: 'Bulma', text: '¡Todas en su sitio! Casa, moto, avión, submarino... ¿y esta nevera?' }],
+        lose: [{ who: 'Bulma', text: '¡Nooo! Acaba de aparecer una moto en el jardín. Otra vez.' }] },
+      { type: 'talk', target: 'oolong_npc', hint: 'Devuelve la nevera a Oolong.',
+        lines: [
+          { who: 'Oolong', text: '¡Eh, esa nevera es mía! Vale, vale... toma un bocadillo como agradecimiento.' },
+          { who: 'Goku', text: '¡Gracias, Oolong! ¿Solo uno?' }
+        ] }
+    ],
+    reward: { zeni: 100, items: [], characters: [] }
+  },
+  {
+    id: 'm_scouter',
+    pack: 'base',
+    worldId: 'tierra',
+    locationId: 'capsule',
+    requires: ['m_raditz', 'm_radar'],
+    title: 'El scouter de Raditz',
+    summary: 'Bulma estudia el aparato que llevaba Raditz en el ojo. Lo que descubre no es nada bueno...',
+    music: 'capsule',
+    intro: [
+      { who: 'Narrador', text: 'Tras la batalla contra Raditz, Krilin trae a la Capsule Corp el extraño aparato que el Saiyan llevaba en el ojo.' }
+    ],
+    steps: [
+      { type: 'talk', target: 'bulma_npc', hint: 'Habla con Bulma.',
+        lines: [
+          { who: 'Bulma', text: 'Esto es un scouter: mide el nivel de pelea... y ¡también es un comunicador!' },
+          { who: 'Bulma', text: 'Sintoniza la frecuencia justo cuando la aguja pase por la zona verde.' }
+        ] },
+      { type: 'battle', target: 'bulma_npc', game: 'reflex', config: { theme: 'scouter', rounds: 3 }, hint: 'Sintoniza el scouter.',
+        lines: [{ who: 'Bulma', text: '¡Con cuidado! Si te pasas, se quema.' }],
+        win: [
+          { who: 'Scouter', text: '«...Raditz ha caído. Iremos a la Tierra a por las Esferas del Dragón. Llegaremos en un año. Vegeta, fuera.»' },
+          { who: 'Bulma', text: '¡Dos Saiyans más, todavía más fuertes que Raditz! Tenemos un año para prepararnos.' },
+          { who: 'Narrador', text: 'La Tierra se prepara para su mayor batalla... (Fin del primer mundo)' }
+        ],
+        lose: [{ who: 'Bulma', text: 'Solo se oye ruido... ¡Inténtalo otra vez!' }] }
+    ],
+    reward: { zeni: 250, items: ['scouter'], characters: [] }
+  },
+
+  // ---------------------------------------------------------------- TORRE KARIN
   {
     id: 'm_senzu',
     pack: 'base',
@@ -368,24 +619,47 @@ export const SEED_MISSIONS = [
     summary: 'Karin guarda una jarra que te hará más fuerte... si consigues seguirle el ritmo.',
     music: 'karin',
     intro: [
-      { who: 'Narrador', text: 'Tras escalar sin descanso, Goku llega a la cima de la Torre Karin.' }
+      { who: 'Narrador', text: 'Tras escalar sin descanso, Goku llega a la cima de la Torre Karin, por encima de las nubes.' }
     ],
     spawns: [
       { id: 'senzu', kind: 'bean', x: 5, y: 2, name: 'Semilla del ermitaño', fromStep: 2, untilStep: 2 }
     ],
     steps: [
       { type: 'talk', target: 'karin_npc', hint: 'Habla con Karin.',
-        lines: [
-          { who: 'Karin', text: '¿Quieres el agua ultrasagrada? Esconderé la jarra entre tres. Sigue el movimiento.' }
-        ] },
+        lines: [{ who: 'Karin', text: '¿Quieres el agua ultrasagrada? Esconderé la jarra entre tres. Sigue el movimiento.' }] },
       { type: 'battle', target: 'karin_npc', game: 'shell', config: { rounds: 3, swaps: 6 }, hint: 'Sigue la jarra.',
         lines: [{ who: 'Karin', text: 'No parpadees. Ni siquiera tu cola puede seguirme.' }],
         win: [{ who: 'Karin', text: 'Bien visto. Como premio... una semilla del ermitaño. Está allí, junto al borde.' }],
-        lose: [{ who: 'Karin', text: 'Demasiado lento. Tres años tardó el Maestro Roshi. ¡Otra vez!' }] },
+        lose: [{ who: 'Karin', text: 'Demasiado lento. El Maestro Roshi tardó tres años. ¡Otra vez!' }] },
       { type: 'collect', target: 'senzu', item: 'senzu', hint: 'Recoge la semilla.',
-        lines: [{ who: 'Goku', text: 'Una judía pequeñita... ¡y me quita el hambre de golpe!' }] }
+        lines: [{ who: 'Goku', text: 'Una judía pequeñita... ¡y me quita el hambre de golpe! Bueno, casi.' }] }
     ],
     reward: { zeni: 300, items: [], characters: [] }
+  },
+  {
+    id: 'm_adivinanzas_karin',
+    pack: 'base',
+    worldId: 'tierra',
+    locationId: 'karin',
+    requires: ['m_senzu'],
+    title: 'Las adivinanzas de Karin',
+    summary: 'Yajirobe se ha comido las semillas otra vez. Karin solo te dará la última si piensas tan rápido como luchas.',
+    music: 'karin',
+    intro: [
+      { who: 'Karin', text: 'Yajirobe se ha vuelto a comer las semillas del ermitaño. ¡Ese glotón no tiene remedio!' }
+    ],
+    steps: [
+      { type: 'talk', target: 'karin_npc', hint: 'Habla con Karin.',
+        lines: [
+          { who: 'Karin', text: 'Me queda una sola. Te la daré si resuelves mis adivinanzas.' },
+          { who: 'Goku', text: '¿Adivinanzas? ¿No podemos echar una carrerita?' }
+        ] },
+      { type: 'battle', target: 'karin_npc', game: 'quiz', config: { topic: 'karin', rounds: 5, seconds: 14 }, hint: 'Resuelve las adivinanzas de Karin.',
+        lines: [{ who: 'Karin', text: 'La mente también se entrena, muchacho.' }],
+        win: [{ who: 'Karin', text: 'Muy bien. Toma la última semilla... y escóndela de Yajirobe.' }],
+        lose: [{ who: 'Karin', text: 'Hmm. Medita un poco más y vuelve a intentarlo.' }] }
+    ],
+    reward: { zeni: 150, items: ['senzu'], characters: [] }
   }
 ]
 

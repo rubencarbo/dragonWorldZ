@@ -441,6 +441,11 @@ export function characterModel (id, size = 0.06) {
   return spriteToVoxels(sprite.grid, palette, { size: voxel, depth: Math.max(1.5, rows / 18) })
 }
 
+// datos del sprite (personalizado si existe) para dibujarlo en 2D (retratos)
+export function spriteData (id) {
+  return customSprites[id] || CHARACTERS[id] || null
+}
+
 export function characterName (id) {
   return customSprites[id]?.name || CHARACTERS[id]?.name || id
 }
@@ -544,6 +549,25 @@ export function propModel (prop) {
     case 'bean': return blocks([
       [0, 0.05, 0, 0.14, 0.1, 0.09, '#6fcf4a'],
       [0, 0, 0, 0.3, 0.05, 0.3, '#c98e4a']
+    ])
+    case 'turtle': { // Umigame: caparazón marrón, cabeza y aletas verdes
+      const g = blocks([
+        [0, 0.05, 0, 0.62, 0.22, 0.5, '#8a5a2a'],
+        [0, 0.27, 0, 0.46, 0.12, 0.36, '#6a4220'],
+        [0.38, 0.12, 0, 0.2, 0.16, 0.18, '#7cc35a'],
+        [0.5, 0.2, 0, 0.14, 0.12, 0.14, '#7cc35a'],
+        [-0.12, 0, 0.26, 0.16, 0.06, 0.12, '#7cc35a'], [-0.12, 0, -0.26, 0.16, 0.06, 0.12, '#7cc35a'],
+        [0.2, 0, 0.26, 0.16, 0.06, 0.12, '#7cc35a'], [0.2, 0, -0.26, 0.16, 0.06, 0.12, '#7cc35a'],
+        [0.56, 0.24, 0.05, 0.03, 0.03, 0.03, '#15151f']
+      ])
+      g.rotation.y = Math.PI / 4
+      return g
+    }
+    case 'fishspot': return blocks([ // poza con caña y un pez saltando
+      [0, 0, 0, 0.6, 0.04, 0.6, '#5fb2f0'],
+      [-0.2, 0, -0.2, 0.05, 0.9, 0.05, '#8a5a2a'],
+      [0.12, 0.35, 0.1, 0.28, 0.12, 0.08, '#ff9a4a'],
+      [0.28, 0.36, 0.1, 0.08, 0.16, 0.04, '#ff9a4a']
     ])
     case 'tower': return blocks([
       [0, 0, 0, 0.14, 1.6, 0.14, '#f2e3c2'],
@@ -1165,8 +1189,10 @@ export function buildDiorama (world, style = 'bricks') {
   petals.count = cores.count = tufts.count = fi
   planet.add(petals, cores, tufts)
 
-  // --- peana fija (no gira con el planeta): nubes, pilares, base y placa
+  // --- peana fija (no gira con el planeta): nubes, pilares, base y placa.
+  // Solo en los mundos que la piden (el planeta de Kaio, réplica de la maqueta)
   const stand = new THREE.Group()
+  if (world.stand) {
   const baseY = -R * 1.62
   const white = styleMat(style, { color: '#fbfbfb' })
   const cloudGeo = style === 'pixel' ? new THREE.BoxGeometry(1.6, 1.6, 1.6) : new THREE.SphereGeometry(1, 20, 14)
@@ -1210,6 +1236,8 @@ export function buildDiorama (world, style = 'bricks') {
   plaque.rotation.x = -0.05
   stand.add(plaque)
 
+  }
+
   // --- Camino de la Serpiente (solo en los mundos que lo tienen)
   if (world.snakeWay) {
     const pts = []
@@ -1246,6 +1274,7 @@ export function buildDiorama (world, style = 'bricks') {
   return {
     planet,
     stand,
+    hasStand: Boolean(world.stand),
     sphere,
     radius: R,
     surface: (dir, lift = 0) => dir.clone().normalize().multiplyScalar(R + lift)

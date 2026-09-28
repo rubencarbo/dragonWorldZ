@@ -2,7 +2,7 @@
 // estado global (ajustes, misiones, sprites, partida), navegación entre
 // pantallas y componentes comunes (diálogos y combates).
 import { createApp, reactive, computed, ref, watch, onMounted } from 'vue'
-import { chiptune, characterName, registerCustomSprites, isMissionAvailable, resolveInteraction, visibleSpawns } from './motor.js'
+import { chiptune, characterName, spriteData, registerCustomSprites, isMissionAvailable, resolveInteraction, visibleSpawns } from './motor.js'
 import { SEED_MISSIONS, MAPS, getLocation } from './mundos.js'
 import { FORMS } from './personajes.js'
 import { MINIGAMES } from './minijuegos.js'
@@ -160,7 +160,7 @@ export const missions = reactive({
 })
 
 // ============================================================ PARTIDA
-const ITEM_NAMES = { esfera_4: 'Esfera de 4 estrellas', radar: 'Radar del dragón', senzu: 'Semilla del ermitaño' }
+const ITEM_NAMES = { esfera_4: 'Esfera de 4 estrellas', radar: 'Radar del dragón', senzu: 'Semilla del ermitaño', scouter: 'Scouter de Raditz' }
 
 const freshProgress = () => ({
   worldId: 'tierra',
@@ -197,8 +197,18 @@ export const game = reactive({
   },
   itemName (id) { return ITEM_NAMES[id] || id },
   // sprite que se dibuja para un personaje (según su transformación actual)
-  spriteOf (id = this.progress.character) { return this.progress.forms?.[id] || id },
-  canTransform (id = this.progress.character) { return (FORMS[id] || []).length > 1 },
+  spriteOf (id = this.progress.character) {
+    // algunas misiones se juegan con otro personaje (p. ej. Goku niño en un recuerdo)
+    const m = this.activeMission
+    if (m?.playAs && id === this.progress.character) return m.playAs
+    return this.progress.forms?.[id] || id
+  },
+  canTransform (id = this.progress.character) { return (FORMS[id] || []).length > 1 && !this.activeMission?.playAs },
+  // siguiente misión disponible en otro lugar (para orientar al jugador)
+  nextElsewhere (locationId) {
+    const m = missions.all.find(m => m.locationId !== locationId && isMissionAvailable(m, this.progress.completed))
+    return m ? { mission: m, location: getLocation(m.locationId) } : null
+  },
   transform () {
     const id = this.progress.character
     const forms = FORMS[id]
@@ -373,25 +383,72 @@ const DialogBox = {
 }
 
 // ============================================================ COMBATES
+// Retrato pixel-art de un luchador (o un emoji si el rival no es un personaje)
+const EMOJI_FOR = { turtle: '🐢', fishspot: '🐟', crate: '💊', jar: '🏺', ball: '🟠', bean: '🫘' }
+const Portrait = {
+  props: { id: String, emoji: String, flip: Boolean },
+  template: `<div class="portrait" :class="{ flip }"><canvas v-if="!emoji" ref="cv" /><span v-else class="emoji">{{ emoji }}</span></div>`,
+  setup (props) {
+    const cv = ref(null)
+    onMounted(() => {
+      const sp = spriteData(props.id)
+      if (!cv.value || !sp) return
+      const g = sp.grid
+      const w = Math.max(...g.map(r => r.length))
+      cv.value.width = w; cv.value.height = g.length
+      const ctx = cv.value.getContext('2d')
+      g.forEach((row, y) => [...row].forEach((ch, x) => {
+        const c = sp.palette?.[ch]
+        if (c) { ctx.fillStyle = c; ctx.fillRect(x, y, 1, 1) }
+      }))
+    })
+    return { cv }
+  }
+}
+
 const BattleHost = {
+  components: { Portrait },
   template: `
-    <div v-if="game.battle" class="overlay">
-      <div class="battle card">
+    <div v-if="game.battle" class="overlay battle-overlay" :class="'theme-' + game.battle.step.game">
+      <div class="battle">
+        <div class="fighters">
+          <div class="fighter hero" :class="{ hurt: hurt === 'hero', strike: hurt === 'enemy' }">
+            <Portrait :id="heroSprite" />
+            <b>{{ hero }}</b>
+          </div>
+          <div class="vs">VS</div>
+          <div class="fighter enemy" :class="{ hurt: hurt === 'enemy', strike: hurt === 'hero' }">
+            <Portrait :id="enemySprite" :emoji="enemyEmoji" flip />
+            <b>{{ game.battle.enemy.name }}</b>
+          </div>
+          <div v-if="pop" :key="pop.k" class="pop" :class="pop.side">{{ pop.text }}</div>
+        </div>
         <header>
-          <span class="vs">{{ hero }} <b>VS</b> {{ game.battle.enemy.name }}</span>
-          <small>{{ info?.name }}</small>
+          <span class="gname">{{ info?.name }}</span>
+          <small>{{ info?.help }}</small>
         </header>
-        <p class="help">{{ info?.help }}</p>
-        <component :is="info.component" v-if="info" :config="game.battle.step.config || {}" :enemy="game.battle.enemy" @end="end" />
+        <component :is="info.component" v-if="info" :config="game.battle.step.config || {}" :enemy="game.battle.enemy" @end="end" @hit="onHit" />
         <p v-else>Minijuego desconocido: {{ game.battle.step.game }}</p>
         <button class="btn small flee" @click="end(false)">Huir</button>
       </div>
     </div>`,
   setup () {
     const info = computed(() => MINIGAMES[game.battle?.step.game])
-    const hero = computed(() => characterName(game.spriteOf()))
+    const heroSprite = computed(() => game.spriteOf())
+    const hero = computed(() => characterName(heroSprite.value))
+    const enemySprite = computed(() => game.battle?.enemy.sprite)
+    const enemyEmoji = computed(() => game.battle?.enemy.sprite ? null : (EMOJI_FOR[game.battle?.enemy.kind] || '❓'))
+    const hurt = ref(null)
+    const pop = ref(null)
+    let t
+    function onHit (who) {
+      hurt.value = who
+      pop.value = { k: Date.now(), side: who, text: who === 'enemy' ? ['¡PAM!', '¡ZAS!', '¡BIEN!', '¡BOOM!'][Math.floor(Math.random() * 4)] : '¡AUCH!' }
+      clearTimeout(t)
+      t = setTimeout(() => { hurt.value = null; pop.value = null }, 650)
+    }
     const end = won => game.finishBattle(won, MAPS[route.params.id]?.music || 'globo')
-    return { game, info, hero, end }
+    return { game, info, hero, heroSprite, enemySprite, enemyEmoji, hurt, pop, onHit, end }
   }
 }
 

@@ -58,12 +58,28 @@ Para publicar misiones desde el panel Admin con Firebase, la cuenta necesita el 
 - Música chiptune original en bucle para cada lugar, más efectos de sonido.
 - Panel Admin (`#/admin`): misiones DLC y conversión de imágenes de personajes a sprites 8 bits.
 
+## Guion del Mundo 1 · La Tierra
+
+| Lugar | Misión | Minijuego |
+|---|---|---|
+| Montaña Paoz | Recuerdo: la esfera de cuatro estrellas (jugando con Goku niño) | Jan-Ken contra el dinosaurio |
+| Montaña Paoz | ¡Gohan tiene que estudiar! | Examen sorpresa de Chichí |
+| Montaña Paoz | La cena de los Saiyans | Reflejos: pesca con la cola |
+| Kame House | La reunión en Kame House | Duelo de rimas con Roshi |
+| Kame House | ¿Dónde están mis gafas? | Sigue la concha de Umigame |
+| Kame House | El hermano del espacio (Raditz) | Jan-Ken contra Raditz + carga del Makankosappo |
+| Capsule Corp | El radar del dragón | Secuencia de ki + 3 en raya con Oolong |
+| Capsule Corp | El lío de las cápsulas | Memoria de cápsulas |
+| Capsule Corp | El scouter de Raditz | Reflejos: sintonizar el scouter |
+| Torre Karin | El agua ultrasagrada | Sigue la jarra |
+| Torre Karin | Las adivinanzas de Karin | Adivinanzas |
+
 ## Crear misiones (DLC)
 
 Las misiones son datos JSON. Desde `#/admin` → **Nueva** se parte de una plantilla. Pasos disponibles:
 
 - `talk` / `goto`: hablar con un prop o acercarse a él (`target` = id del prop).
-- `battle`: minijuego (`game`: `rps`, `tictactoe`, `rhyme`, `kiseq`, `shell`) con `config` y los diálogos `win`/`lose`.
+- `battle`: minijuego (`game`: `rps`, `tictactoe`, `rhyme`, `kiseq`, `shell`, `quiz`, `reflex`, `memory`) con `config` y los diálogos `win`/`lose`.
 - `collect`: recoger un objeto (`item`).
 
 Con `spawns` se añaden NPCs u objetos al mapa entre los pasos `fromStep` y `untilStep`.

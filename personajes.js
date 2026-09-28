@@ -488,6 +488,64 @@ export const CHARACTER_SPECS = {
 // Vegeta y Piccolo están editados a partir del sprite de Goku (mismo cuerpo,
 // paleta y cabeza redibujada). Bulma es provisional.
 export const SPRITES = {
+  raditz: {
+    palette: {a: '#2f3139', b: '#020207', c: '#02041a', d: '#5a6ea9', e: '#010103', f: '#01030d', g: '#000200', h: '#020703', i: '#0a0a12', j: '#030101', k: '#22222c', l: '#121218', m: '#080101', n: '#0f0102', o: '#cb8055', p: '#c8c8d4', q: '#f3c9a8', r: '#702e41', s: '#3fe07a', t: '#453c60', u: '#33262f', v: '#5a3a1c', w: '#1f161d', x: '#8a5a30', y: '#4a3a44', z: '#0a010c', A: '#1d0103', B: '#8e1f2a', C: '#1c1624', D: '#2a2233', E: '#d6333a', F: '#120e18', G: '#f4f4f4', H: '#8a8aa0'},
+    grid: [
+      '....................abcc...........',
+      '.................dcaea.............',
+      '.................faee..............',
+      '................fagec..............',
+      '...............baaee..heeegf.......',
+      '...............fagef.faaaaaac......',
+      '..............haaggeaaaaeebeaf.....',
+      '..............eaagggaaeggbaacac....',
+      '.........ii...baaggjaeejeafc.......',
+      '........iklieggeggegggggac.........',
+      '....fb.ikklfggggggeeeegfg..........',
+      '.....fjbalkegbegebaaebaaaaac.......',
+      '.....ihjjabebaageaejafbafjaaab.....',
+      '....ikkfgbaeaaeggafegajbabbgeab....',
+      '...baaaaebaeaaegmmgggbaebaebgffc...',
+      '...fbeeaaaaeaaenoonjejamjba........',
+      '...ilfbgejbeeagnooomhmompbg........',
+      '...ikkkegjjngcabnmoqmmqmpjb........',
+      '....fbjegemommoardnjqmsssfg........',
+      '...ikkcbgenoohoor..tfqss..f........',
+      '..ikklkkebnoorooooqaqqe............',
+      '..iklkkkklcbbrooooqqqqb............',
+      '..ilkkkklkkkkjroooqqqm.............',
+      '.ilkkkklkkhjemoroqqqrm.............',
+      '.ikkkklggnuuvuuuwwwwuumf...........',
+      '.ikkklkcxxxvuvyyyuwyyvvxc..........',
+      'ikkklkkbvvvxvuuyyyywyxvxm..........',
+      'ikklkkkzxxvvvvvxxxxxxxvxb..........',
+      'iklkkkmooqqAuuuuuuuuuu.f...........',
+      'klkkkkjwwqqnuuuuuyuuuuym...........',
+      'lkkkklmowqmjuuuuuuyyyuzub..........',
+      'lkkklnoqwmkkbgAuuuuuuucyh..........',
+      'ikklkmqqfkkklibyyuuuueyyBf.........',
+      'iklkkhuufkkklinuuuuuuhuuBn.........',
+      'ilkkbBCCfkklljDCCEEEECeBBqb........',
+      'ilkkgoqqqflkljDCDDCDFDnooqe........',
+      '.ikkeqqoFqfkmDCDDDCDFDDAoqb........',
+      '.ikleqqoFnhzCDDDDDCDFDDnqqg........',
+      '.ilkkemqqhknDDDDDDCCFDDCnb.........',
+      '.ikkkklbhknCDDDDCCFFFDDDh..........',
+      '.ikkklkkkmnCDDDCDbnDCDDDm..........',
+      '.ikklkkkmCFCDDCDn.mCDCDDFz.........',
+      'ikklkkkACFFCCCCn..gFFDCCFCc........',
+      'iklkkkkACFFCCFFf..jBFFFFFCe........',
+      'illlkklACFFFFFCz..jFCFFFCFb........',
+      'iliiklkAFFFFFCFz...zFCCCFc.........',
+      '.i.ilkllbGpppHm.....zpHnm..........',
+      '...illiigGpGjb......bpHz...........',
+      '....ii..bGpGf.......epm............',
+      '........hppc........eHz............',
+      '.......hoof.........gpHzf..........',
+      '.......Apa..........bpHHHc.........',
+      '......mpGf.........................'
+    ]
+  },
   goku_nino: {
     palette: {a: '#01010b', b: '#414040', c: '#010101', d: '#843d31', e: '#020204', f: '#ef9a56', g: '#090101', h: '#fac49f', i: '#6677b7', j: '#316a9e', k: '#102147', l: '#5d6eb1', m: '#1a0302', n: '#c5795c', o: '#fcd4b6', p: '#472321', q: '#bdc4c6', r: '#36407a', s: '#303767', t: '#2b3770', u: '#05061a', v: '#232e5c', w: '#7b7e7d', x: '#a3604a'},
     grid: [
@@ -1235,7 +1293,7 @@ export const SPRITES = {
 const SPRITE_NAMES = {
   goku: 'Son Goku', goku_nino: 'Goku (niño)', goku_ssj: 'Goku Super Saiyan', goku_ssj2: 'Goku Super Saiyan 2', goku_ssj3: 'Goku Super Saiyan 3',
   gohan: 'Son Gohan', gohan_ssj: 'Gohan Super Saiyan', krilin: 'Krilin', vegeta: 'Vegeta', vegeta_ssj: 'Vegeta Super Saiyan',
-  piccolo: 'Piccolo', bulma: 'Bulma'
+  piccolo: 'Piccolo', bulma: 'Bulma', raditz: 'Raditz'
 }
 // altura de referencia (Goku) para mantener las proporciones entre personajes
 export const SPRITE_REF_ROWS = 53
@@ -1264,5 +1322,5 @@ export const CHARACTER_GROUPS = [
   { name: 'Protagonistas', ids: ['goku', 'goku_nino', 'gohan', 'krilin', 'vegeta', 'piccolo', 'bulma'] },
   { name: 'Transformaciones', ids: ['goku_ssj', 'goku_ssj2', 'goku_ssj3', 'gohan_ssj', 'vegeta_ssj'] },
   { name: 'Secundarios', ids: ['roshi', 'chichi', 'oolong', 'karin'] },
-  { name: 'Rivales', ids: ['dino'] }
+  { name: 'Rivales', ids: ['raditz', 'dino'] }
 ]

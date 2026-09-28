@@ -367,7 +367,9 @@ export const GlobeView = {
         const vHalf = THREE.MathUtils.degToRad(camera.fov / 2)
         const hHalf = Math.atan(Math.tan(vHalf) * camera.aspect)
         hHalfFov = Math.min(hHalf, vHalf)
-        maxDist = Math.max((R() * 1.5) / Math.tan(vHalf), (R() * 1.12) / Math.tan(hHalf)) + R()
+        // con peana: de +1,05R a -1,8R · sin peana: planeta con el personaje encima
+        const halfH = diorama?.hasStand ? 1.5 : 1.2
+        maxDist = Math.max((R() * halfH) / Math.tan(vHalf), (R() * 1.12) / Math.tan(hHalf)) + R()
         camera.position.z = targetDist()
         camera.updateProjectionMatrix()
       }
@@ -380,6 +382,7 @@ export const GlobeView = {
       scene.add(sun, fill)
       if (style === 'pixel') scene.add(starfield())
       buildWorld()
+      refit()
 
       detachGestures = attachGestures(r3.canvas, { onTap: pick, onDrag, onZoom: zoomBy })
 
@@ -392,7 +395,8 @@ export const GlobeView = {
         // con el planeta entero se centra la maqueta (peana incluida); al acercarse,
         // la vista sube hacia la zona alta, donde están el lugar actual y el personaje
         const k = THREE.MathUtils.clamp((camera.position.z - minDist()) / Math.max(0.01, maxDist - minDist()), 0, 1)
-        const lookY = THREE.MathUtils.lerp(R() * 0.5, -R() * 0.38, k)
+        // sin peana el planeta queda algo más bajo para no chocar con el título
+        const lookY = THREE.MathUtils.lerp(R() * 0.5, diorama?.hasStand ? -R() * 0.38 : R() * 0.02, k)
         camera.position.y = lookY
         camera.lookAt(0, lookY, 0)
         for (const m of markers) {
@@ -448,6 +452,17 @@ export const LocationView = {
         </div>
       </section>
 
+      <section v-else-if="game.activeMission" class="board card done">
+        <b>⭐ Misión en curso: {{ game.activeMission.title }}</b>
+        <span>Continúa en <b>{{ activeLocationName }}</b>. {{ game.currentStep?.hint }}</span>
+      </section>
+
+      <section v-else class="board card done">
+        <b>✅ ¡Lo has completado todo aquí!</b>
+        <span v-if="nextHint">Siguiente aventura: «{{ nextHint.mission.title }}» en <b>{{ nextHint.location.name }}</b>. Vuelve al globo para viajar.</span>
+        <span v-else>Pronto llegarán nuevas misiones (DLC). ¡Habla con todos para descubrir secretos!</span>
+      </section>
+
       <footer class="hud-bottom">
         <div class="team">
           <button v-for="c in game.progress.team" :key="c" class="chip" :class="{ on: c === game.progress.character }"
@@ -468,6 +483,8 @@ export const LocationView = {
     const location = computed(() => getLocation(props.id))
     const map = MAPS[props.id]
     const available = computed(() => game.availableAt(props.id))
+    const nextHint = computed(() => game.nextElsewhere(props.id))
+    const activeLocationName = computed(() => getLocation(game.activeMission?.locationId)?.name || '')
 
     let r3, scene, camera, raf, player, tileMesh, highlight
     let propObjs = new Map() // id → { prop, obj }
@@ -791,6 +808,7 @@ export const LocationView = {
     })
 
     // cambios de misión (nuevo paso, spawns) → refrescar escena
+    watch(() => game.progress.active?.missionId, () => { if (scene) makePlayer() })
     watch(() => [game.progress.active?.missionId, game.progress.active?.step, game.progress.completed.length], () => {
       if (scene) syncProps()
     })
@@ -801,7 +819,7 @@ export const LocationView = {
       detachGestures?.()
       r3?.dispose()
     })
-    return { transform, characterName, stage, back, location, game, available, CHARACTERS, switchCharacter, settings, moves, rolling, roll }
+    return { nextHint, activeLocationName, transform, characterName, stage, back, location, game, available, CHARACTERS, switchCharacter, settings, moves, rolling, roll }
   }
 }
 

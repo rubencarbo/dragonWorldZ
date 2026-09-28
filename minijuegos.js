@@ -1,6 +1,7 @@
 // MINIJUEGOS — combates basados en juegos infantiles.
 // Cada minijuego es un componente Vue (props: config, enemy · emite 'end' con
-// true/false) registrado en MINIGAMES. La lógica pura va arriba para testearla.
+// true/false y 'hit' con 'hero' | 'enemy' para animar la pantalla de combate)
+// registrado en MINIGAMES. La lógica pura va arriba para testearla.
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { chiptune, noteToFreq } from './motor.js'
 
@@ -93,33 +94,90 @@ export function followSwaps (start, swaps) {
   return p
 }
 
+// ---------- Examen / adivinanzas ----------
+// [pregunta, respuesta correcta, ...incorrectas]
+export const QUIZ = {
+  examen: [
+    ['¿Cuántas Esferas del Dragón hay que reunir para invocar a Shenlong?', '7', '5', '9', '12'],
+    ['Si Goku come 3 cuencos de arroz por comida y hace 4 comidas... ¿cuántos cuencos come?', '12', '7', '9', '16'],
+    ['¿Cómo se llama la nube amarilla de Goku?', 'Kinton', 'Kamehame', 'Kaio', 'Karin'],
+    ['¿Qué capital es la de la Capsule Corporation?', 'Capital del Oeste', 'Capital del Norte', 'Ciudad Satán', 'Pueblo Pingüino'],
+    ['¿Cuántas estrellas tiene la esfera del sombrero de Gohan?', '4', '1', '7', '3'],
+    ['Si una semilla del ermitaño cura a 1 guerrero, ¿cuántas hacen falta para 5?', '5', '1', '10', '3'],
+    ['¿Qué animal es Umigame?', 'Una tortuga', 'Un cerdo', 'Un gato', 'Un dinosaurio'],
+    ['¿Quién fue el maestro de Goku y Krilin?', 'El Maestro Roshi', 'Kaio', 'Piccolo', 'Chichí'],
+    ['12 ÷ 4 = ?', '3', '4', '6', '8'],
+    ['¿De qué color es la piel de Piccolo?', 'Verde', 'Azul', 'Rosa', 'Morada']
+  ],
+  karin: [
+    ['Cuanto más le quitas, más grande se hace. ¿Qué es?', 'Un agujero', 'Una semilla', 'Una nube', 'Una torre'],
+    ['Vuela sin alas y llora sin ojos.', 'Una nube', 'Goku', 'Un pájaro', 'Un dragón'],
+    ['Tiene dientes y no come, tiene barba y no es hombre.', 'El ajo', 'Roshi', 'Karin', 'Un peine'],
+    ['Si me nombras, desaparezco.', 'El silencio', 'Un fantasma', 'La sombra', 'El viento'],
+    ['Cuanto más seca, más moja.', 'La toalla', 'La lluvia', 'El sol', 'Una esponja'],
+    ['Sube llena y baja vacía... ¿qué es?', 'La cuchara', 'La torre', 'El ascensor', 'La jarra'],
+    ['Tengo agujas y no sé coser, tengo números y no sé leer.', 'El reloj', 'El erizo', 'El scouter', 'Un libro'],
+    ['Soy blanco como la nieve y en la taza me derrito.', 'El azúcar', 'La leche', 'Una nube', 'El hielo']
+  ]
+}
+export function makeQuizRounds (topic, n, rnd = Math.random) {
+  const bank = [...(QUIZ[topic] || QUIZ.examen)].sort(() => rnd() - 0.5).slice(0, n)
+  return bank.map(([q, answer, ...wrong]) => ({ q, answer, options: [answer, ...wrong].sort(() => rnd() - 0.5) }))
+}
+
+// ---------- Reflejos ----------
+// posición de la aguja (0..1) en ida y vuelta a velocidad v (vueltas por segundo)
+export function needleAt (t, v) {
+  const p = (t * v) % 2
+  return p < 1 ? p : 2 - p
+}
+export const inZone = (pos, zone) => pos >= zone[0] && pos <= zone[1]
+
+// ---------- Memoria ----------
+export const CAPSULES = [
+  ['🏠', 'Casa'], ['🏍️', 'Moto'], ['✈️', 'Avión'], ['🚤', 'Lancha'], ['🧊', 'Nevera'], ['🚗', 'Coche'], ['🤖', 'Robot'], ['🛸', 'Nave']
+]
+export function makeDeck (pairs, rnd = Math.random) {
+  const chosen = [...CAPSULES].sort(() => rnd() - 0.5).slice(0, pairs)
+  return [...chosen, ...chosen].map(([icon, name], i) => ({ id: i, icon, name })).sort(() => rnd() - 0.5)
+}
+
 const wait = ms => new Promise(r => setTimeout(r, ms))
+
+// Marcador con esferas del dragón (una por punto)
+const Orbs = {
+  props: { n: Number, of: Number, side: String },
+  template: `<div class="orbs" :class="side"><span v-for="i in of" :key="i" class="orb" :class="{ on: i <= n }">★</span></div>`
+}
 
 // ============================================================ JAN-KEN (piedra, papel o tijera)
 const RPS_ICON = { piedra: '✊', papel: '✋', tijera: '✌️' }
 const RPS_NAME = { piedra: 'Piedra', papel: 'Papel', tijera: 'Tijera' }
-const RPS_RESULT = { win: '¡GANAS!', lose: 'PIERDES', draw: 'EMPATE' }
+const RPS_RESULT = { win: '¡GANAS!', lose: '¡PIERDES!', draw: '¡EMPATE!' }
 // "Tells": pistas de lo que va a sacar el rival (aciertan casi siempre)
 const RPS_TELLS = {
-  piedra: 'Aprieta las garras con fuerza...',
-  papel: 'Abre mucho la boca, como para tragarse algo...',
-  tijera: 'Mueve dos dedos, chac, chac...'
+  piedra: 'Aprieta el puño con fuerza...',
+  papel: 'Abre mucho la mano, como para atrapar algo...',
+  tijera: 'Mueve dos dedos: chac, chac...'
 }
 
 const RockPaperScissors = {
+  components: { Orbs },
   props: { config: Object, enemy: Object },
-  emits: ['end'],
+  emits: ['end', 'hit'],
   template: `
-    <div class="mg">
-      <p class="score">Tú {{ me }} — {{ them }} {{ enemy.name }}</p>
-      <p class="tell">{{ tell }}</p>
-      <div class="reveal" v-if="last">
-        <span>{{ ICON[last.mine] }}</span><small>vs</small><span>{{ ICON[last.theirs] }}</span>
-        <b :class="last.result">{{ RESULT[last.result] }}</b>
+    <div class="mg rps">
+      <div class="scoreline"><Orbs :n="me" :of="need" side="hero" /><Orbs :n="them" :of="need" side="enemy" /></div>
+      <div class="bubble">💬 {{ tell }}</div>
+      <div class="clash" :class="phase">
+        <div class="hand hero">{{ phase === 'reveal' ? ICON[last.mine] : '✊' }}</div>
+        <div class="call">{{ call }}</div>
+        <div class="hand enemy">{{ phase === 'reveal' ? ICON[last.theirs] : '✊' }}</div>
+        <div v-if="phase === 'reveal'" class="banner" :class="last.result">{{ RESULT[last.result] }}</div>
       </div>
       <div class="choices">
-        <button v-for="c in MOVES" :key="c" class="btn big" :disabled="done" @click="play(c)">
-          {{ ICON[c] }}<small>{{ NAME[c] }}</small>
+        <button v-for="c in MOVES" :key="c" class="choice" :disabled="busy" @click="play(c)">
+          <span class="ico">{{ ICON[c] }}</span><small>{{ NAME[c] }}</small>
         </button>
       </div>
     </div>`,
@@ -128,44 +186,54 @@ const RockPaperScissors = {
     const need = Math.ceil((props.config?.bestOf || 3) / 2)
     const me = ref(0)
     const them = ref(0)
-    const last = ref(null)
-    const done = ref(false)
+    const last = ref({ mine: 'piedra', theirs: 'piedra', result: 'draw' })
+    const busy = ref(false)
+    const phase = ref('idle')
+    const call = ref('¡Elige!')
     const history = []
     let planned = rpsEnemyMove(history)
     const tell = ref(RPS_TELLS[planned])
 
-    function play (mine) {
+    async function play (mine) {
+      busy.value = true
+      phase.value = 'shake'
+      for (const w of ['¡Jan...', '...Ken...', '¡PON!']) { call.value = w; chiptune.sfx('step'); await wait(320) }
       const theirs = planned
       const result = rpsWinner(mine, theirs)
       history.push(mine)
       last.value = { mine, theirs, result }
-      if (result === 'win') { me.value++; chiptune.sfx('ok') }
-      if (result === 'lose') { them.value++; chiptune.sfx('bad') }
-      if (me.value >= need || them.value >= need) {
-        done.value = true
-        setTimeout(() => emit('end', me.value >= need), 900)
-        return
-      }
+      phase.value = 'reveal'
+      call.value = '💥'
+      if (result === 'win') { me.value++; chiptune.sfx('ok'); emit('hit', 'enemy') }
+      if (result === 'lose') { them.value++; chiptune.sfx('bad'); emit('hit', 'hero') }
+      await wait(1100)
+      if (me.value >= need || them.value >= need) { emit('end', me.value >= need); return }
       planned = rpsEnemyMove(history)
       // 80% de las veces la pista es fiable
-      const shown = Math.random() < 0.8 ? planned : MOVES[Math.floor(Math.random() * 3)]
-      tell.value = RPS_TELLS[shown]
+      tell.value = RPS_TELLS[Math.random() < 0.8 ? planned : MOVES[Math.floor(Math.random() * 3)]]
+      phase.value = 'idle'
+      call.value = '¡Elige!'
+      busy.value = false
     }
-    return { MOVES, ICON: RPS_ICON, NAME: RPS_NAME, RESULT: RPS_RESULT, me, them, last, done, tell, play }
+    return { MOVES, ICON: RPS_ICON, NAME: RPS_NAME, RESULT: RPS_RESULT, need, me, them, last, busy, phase, call, tell, play }
   }
 }
 
 // ============================================================ TRES EN RAYA
 const TicTacToe = {
+  components: { Orbs },
   props: { config: Object, enemy: Object },
-  emits: ['end'],
+  emits: ['end', 'hit'],
   template: `
-    <div class="mg">
-      <p class="score">Tú: ⭕ · {{ enemy.name }}: ❌ · {{ wins }}/{{ need }}</p>
+    <div class="mg ttt">
+      <div class="scoreline"><Orbs :n="wins" :of="need" side="hero" /><Orbs :n="losses" :of="need" side="enemy" /></div>
       <p class="tell">{{ msg }}</p>
       <div class="ttt-board">
         <button v-for="(c, i) in board" :key="i" class="cell" :class="{ win: winLine.includes(i) }"
-          :disabled="!!c || locked" @click="play(i)">{{ c === 'O' ? '⭕' : c === 'X' ? '❌' : '' }}</button>
+          :disabled="!!c || locked" @click="play(i)">
+          <span v-if="c === 'O'" class="mark ball">★</span>
+          <span v-else-if="c === 'X'" class="mark cross" />
+        </button>
       </div>
     </div>`,
   setup (props, { emit }) {
@@ -175,22 +243,22 @@ const TicTacToe = {
     const locked = ref(false)
     const wins = ref(0)
     const losses = ref(0)
-    const msg = ref('Empiezas tú. Tres en línea y ganas.')
+    const msg = ref('Empiezas tú: consigue tres esferas en línea.')
     const winLine = ref([])
 
     function finishRound (w) {
       locked.value = true
       winLine.value = LINES.find(l => l.every(i => board.value[i] === w)) || []
-      if (w === 'O') { wins.value++; chiptune.sfx('ok'); msg.value = '¡Tres en raya!' } else if (w === 'X') { losses.value++; chiptune.sfx('bad'); msg.value = `${props.enemy.name} gana esta.` } else msg.value = 'Empate... ¡otra!'
+      if (w === 'O') { wins.value++; chiptune.sfx('ok'); msg.value = '¡Tres en raya!'; emit('hit', 'enemy') } else if (w === 'X') { losses.value++; chiptune.sfx('bad'); msg.value = `${props.enemy.name} gana esta.`; emit('hit', 'hero') } else msg.value = 'Empate... ¡otra!'
       setTimeout(() => {
         if (wins.value >= need) return emit('end', true)
         if (losses.value >= need) return emit('end', false)
         board.value = Array(9).fill(null)
         winLine.value = []
         locked.value = false
-        // tras perder o empatar, a veces empieza el rival
+        msg.value = 'Nueva partida.'
         if (w !== 'O' && Math.random() < 0.5) aiTurn()
-      }, 1100)
+      }, 1200)
     }
     function aiTurn () {
       board.value[tttAiMove(board.value, 'X', level)] = 'X'
@@ -203,24 +271,25 @@ const TicTacToe = {
       const w = tttWinner(board.value)
       if (w) return finishRound(w)
       locked.value = true
-      setTimeout(() => { locked.value = false; aiTurn() }, 350)
+      msg.value = `${props.enemy.name} piensa...`
+      setTimeout(() => { locked.value = false; msg.value = 'Tu turno.'; aiTurn() }, 450)
     }
-    return { need, board, locked, wins, msg, winLine, play }
+    return { need, board, locked, wins, losses, msg, winLine, play }
   }
 }
 
 // ============================================================ DUELO DE RIMAS
 const RhymeBattle = {
   props: { config: Object, enemy: Object },
-  emits: ['end'],
+  emits: ['end', 'hit'],
   template: `
-    <div class="mg">
+    <div class="mg rhyme">
       <p class="score">Ronda {{ round + 1 }}/{{ total }} · Aciertos {{ hits }}</p>
-      <div class="timer"><div :style="{ width: (left / seconds * 100) + '%' }" /></div>
-      <p class="say">«{{ current.word.toUpperCase() }}...»</p>
+      <div class="kibar"><div :style="{ width: (left / seconds * 100) + '%' }" /></div>
+      <div class="speech">«{{ current.word.toUpperCase() }}...»</div>
       <p class="tell">¿Qué palabra rima?</p>
       <div class="options">
-        <button v-for="o in current.options" :key="o" class="btn" :disabled="answered"
+        <button v-for="o in current.options" :key="o" class="scroll" :disabled="answered"
           :class="{ good: answered && o === current.answer, bad: answered && o === picked && o !== current.answer }"
           @click="answer(o)">{{ o }}</button>
       </div>
@@ -235,7 +304,6 @@ const RhymeBattle = {
     const answered = ref(false)
     const picked = ref(null)
     const left = ref(seconds)
-
     const iv = setInterval(() => {
       if (answered.value) return
       left.value = Math.max(0, left.value - 0.1)
@@ -246,19 +314,15 @@ const RhymeBattle = {
     function answer (o) {
       answered.value = true
       picked.value = o
-      if (o === current.value.answer) { hits.value++; chiptune.sfx('ok') } else chiptune.sfx('bad')
+      if (o === current.value.answer) { hits.value++; chiptune.sfx('ok'); emit('hit', 'enemy') } else { chiptune.sfx('bad'); emit('hit', 'hero') }
       setTimeout(() => {
-        if (round.value + 1 >= total) {
-          clearInterval(iv)
-          emit('end', hits.value >= Math.ceil(total * 0.6))
-          return
-        }
+        if (round.value + 1 >= total) { clearInterval(iv); emit('end', hits.value >= Math.ceil(total * 0.6)); return }
         round.value++
         current.value = makeRhymeRound(offset + round.value)
         answered.value = false
         picked.value = null
         left.value = seconds
-      }, 800)
+      }, 900)
     }
     return { total, seconds, round, hits, current, answered, picked, left, answer }
   }
@@ -266,22 +330,23 @@ const RhymeBattle = {
 
 // ============================================================ SECUENCIA DE KI (tipo Simón)
 const KI_PADS = [
-  { name: 'ROJO', color: '#d6333a', note: 'C5' },
-  { name: 'AZUL', color: '#2250b8', note: 'E5' },
-  { name: 'AMARILLO', color: '#e0b020', note: 'G5' },
-  { name: 'VERDE', color: '#2f9e44', note: 'C6' }
+  { name: 'Fuego', color: '#ff4a3a', glow: '#ffb09a', note: 'C5' },
+  { name: 'Agua', color: '#2f7bff', glow: '#9cc4ff', note: 'E5' },
+  { name: 'Rayo', color: '#ffc21a', glow: '#fff09a', note: 'G5' },
+  { name: 'Viento', color: '#2fcf6a', glow: '#a8f5c2', note: 'C6' }
 ]
 
 const KiSequence = {
   props: { config: Object, enemy: Object },
-  emits: ['end'],
+  emits: ['end', 'hit'],
   template: `
-    <div class="mg">
-      <p class="score">Nivel {{ seq.length }}/{{ target }} · Vidas {{ '❤'.repeat(lives) }}</p>
-      <p class="tell">{{ showing ? 'Observa la secuencia de ki...' : 'Tu turno: repítela' }}</p>
+    <div class="mg kiseq">
+      <p class="score">Carga {{ seq.length }}/{{ target }} · {{ '❤'.repeat(lives) }}</p>
+      <div class="charge"><div :style="{ width: Math.round((seq.length - (showing ? 1 : 0)) / target * 100) + '%' }" /></div>
+      <p class="tell">{{ showing ? 'Observa el ki...' : '¡Tu turno! Repite la secuencia' }}</p>
       <div class="pads">
-        <button v-for="(p, i) in PADS" :key="p.name" class="pad" :style="{ background: p.color }"
-          :class="{ lit: lit === i }" :disabled="showing" @click="press(i)">{{ p.name }}</button>
+        <button v-for="(p, i) in PADS" :key="p.name" class="kiorb" :style="{ '--c': p.color, '--g': p.glow }"
+          :class="{ lit: lit === i }" :disabled="showing" @click="press(i)"><span>{{ p.name }}</span></button>
       </div>
     </div>`,
   setup (props, { emit }) {
@@ -291,45 +356,38 @@ const KiSequence = {
     const lit = ref(-1)
     const showing = ref(true)
     const lives = ref(2)
+    const beep = i => { if (chiptune.ensure()) chiptune.tone('pulse', noteToFreq(KI_PADS[i].note), chiptune.ctx.currentTime, 0.2, 0.2) }
 
-    function beep (i) {
-      if (chiptune.ensure()) chiptune.tone('pulse', noteToFreq(KI_PADS[i].note), chiptune.ctx.currentTime, 0.2, 0.2)
-    }
     async function show () {
       showing.value = true
       input.value = []
-      await wait(500)
-      const speed = Math.max(220, 520 - seq.value.length * 40)
+      await wait(600)
+      const speed = Math.max(240, 540 - seq.value.length * 40)
       for (const i of seq.value) {
-        lit.value = i
-        beep(i)
+        lit.value = i; beep(i)
         await wait(speed)
         lit.value = -1
-        await wait(120)
+        await wait(130)
       }
       showing.value = false
-    }
-    function grow () {
-      seq.value.push(Math.floor(Math.random() * 4))
-      show()
     }
     function press (i) {
       lit.value = i
       beep(i)
-      setTimeout(() => { if (lit.value === i) lit.value = -1 }, 150)
+      setTimeout(() => { if (lit.value === i) lit.value = -1 }, 160)
       input.value.push(i)
       const k = input.value.length - 1
       if (seq.value[k] !== i) {
-        chiptune.sfx('bad')
+        chiptune.sfx('bad'); emit('hit', 'hero')
         lives.value--
-        if (lives.value <= 0) { showing.value = true; setTimeout(() => emit('end', false), 600); return }
+        if (lives.value <= 0) { showing.value = true; setTimeout(() => emit('end', false), 700); return }
         show()
         return
       }
       if (input.value.length === seq.value.length) {
-        chiptune.sfx('ok')
-        if (seq.value.length >= target) { showing.value = true; setTimeout(() => emit('end', true), 600); return }
-        setTimeout(grow, 400)
+        chiptune.sfx('ok'); emit('hit', 'enemy')
+        if (seq.value.length >= target) { showing.value = true; setTimeout(() => emit('end', true), 700); return }
+        setTimeout(() => { seq.value.push(Math.floor(Math.random() * 4)); show() }, 450)
       }
     }
     onMounted(() => { seq.value = [0, 1, 2].map(() => Math.floor(Math.random() * 4)); show() })
@@ -337,82 +395,223 @@ const KiSequence = {
   }
 }
 
-// ============================================================ SIGUE LA JARRA (trile)
+// ============================================================ SIGUE LA JARRA / CONCHA (trile)
 const ShellGame = {
   props: { config: Object, enemy: Object },
-  emits: ['end'],
+  emits: ['end', 'hit'],
   template: `
-    <div class="mg">
+    <div class="mg shell">
       <p class="score">Ronda {{ round + 1 }}/{{ total }} · Aciertos {{ hits }}</p>
       <p class="tell">{{ msg }}</p>
       <div class="shell-table">
-        <button v-for="j in 3" :key="j" class="jar" :style="{ left: slotLeft(posOf[j - 1]) }"
-          :class="{ lift: reveal && ((j - 1) === prize || (j - 1) === pickedJar) }"
-          :disabled="phase !== 'pick'" @click="pick(j - 1)">
-          <span class="pot">🏺</span>
-          <span v-if="reveal && (j - 1) === prize" class="water">💧</span>
+        <button v-for="j in 3" :key="j" class="cup" :class="[kind, { lift: reveal && ((j - 1) === prize || (j - 1) === pickedJar), hop: hopping.includes(j - 1) }]"
+          :style="{ left: slotLeft(posOf[j - 1]) }" :disabled="phase !== 'pick'" @click="pick(j - 1)">
+          <span class="body" />
+          <span v-if="reveal && (j - 1) === prize" class="prize">{{ prizeIcon }}</span>
         </button>
       </div>
     </div>`,
   setup (props, { emit }) {
     const total = props.config?.rounds || 3
     const baseSwaps = props.config?.swaps || 6
+    const kind = props.config?.item === 'gafas' ? 'seashell' : 'jar'
+    const prizeIcon = props.config?.item === 'gafas' ? '🕶️' : '💧'
     const round = ref(0)
     const hits = ref(0)
-    const prize = ref(0) // jarra (objeto) que tiene el agua
-    const posOf = ref([0, 1, 2]) // hueco que ocupa cada jarra
+    const prize = ref(0)
+    const posOf = ref([0, 1, 2])
     const phase = ref('show')
     const reveal = ref(true)
     const pickedJar = ref(-1)
+    const hopping = ref([])
     const msg = ref('')
-    const slotLeft = s => `calc(${s * 33.3}% + 4px)`
+    const slotLeft = s => `calc(${s * 33.3}% + 6px)`
 
     async function playRound () {
-      phase.value = 'show'
-      reveal.value = true
-      pickedJar.value = -1
+      phase.value = 'show'; reveal.value = true; pickedJar.value = -1
       prize.value = Math.floor(Math.random() * 3)
-      msg.value = 'El agua ultrasagrada está aquí. ¡No la pierdas de vista!'
-      await wait(1300)
+      msg.value = kind === 'seashell' ? '¡Las gafas están aquí! No las pierdas de vista.' : 'El agua ultrasagrada está aquí. ¡No la pierdas de vista!'
+      await wait(1400)
       reveal.value = false
-      await wait(400)
-      msg.value = `${props.enemy.name} mueve las jarras...`
-      const speed = Math.max(180, 420 - round.value * 90)
+      await wait(450)
+      msg.value = `${props.enemy.name} lo mezcla todo...`
+      const speed = Math.max(200, 460 - round.value * 90)
       for (const [a, b] of randomSwaps(baseSwaps + round.value * 2)) {
-        // a y b son huecos: intercambia las jarras que los ocupan
         const p = [...posOf.value]
-        const ja = p.indexOf(a)
-        const jb = p.indexOf(b)
-        p[ja] = b
-        p[jb] = a
+        const ja = p.indexOf(a); const jb = p.indexOf(b)
+        p[ja] = b; p[jb] = a
+        hopping.value = [ja]
         posOf.value = p
         chiptune.sfx('step')
         await wait(speed)
+        hopping.value = []
       }
       phase.value = 'pick'
-      msg.value = '¿Dónde está el agua?'
+      msg.value = kind === 'seashell' ? '¿Bajo qué concha están las gafas?' : '¿Dónde está el agua?'
     }
     async function pick (j) {
-      phase.value = 'result'
-      pickedJar.value = j
-      reveal.value = true
-      if (j === prize.value) { hits.value++; chiptune.sfx('ok'); msg.value = '¡Bien visto!' } else { chiptune.sfx('bad'); msg.value = '¡Fallaste!' }
-      await wait(1200)
+      phase.value = 'result'; pickedJar.value = j; reveal.value = true
+      if (j === prize.value) { hits.value++; chiptune.sfx('ok'); msg.value = '¡Bien visto!'; emit('hit', 'enemy') } else { chiptune.sfx('bad'); msg.value = '¡Fallaste!'; emit('hit', 'hero') }
+      await wait(1300)
       if (round.value + 1 >= total) { emit('end', hits.value > total / 2); return }
       round.value++
       playRound()
     }
     onMounted(playRound)
-    return { total, round, hits, prize, posOf, phase, reveal, pickedJar, msg, slotLeft, pick }
+    return { total, kind, prizeIcon, round, hits, prize, posOf, phase, reveal, pickedJar, hopping, msg, slotLeft, pick }
+  }
+}
+
+// ============================================================ EXAMEN / ADIVINANZAS
+const Quiz = {
+  props: { config: Object, enemy: Object },
+  emits: ['end', 'hit'],
+  template: `
+    <div class="mg quiz">
+      <p class="score">Pregunta {{ i + 1 }}/{{ rounds.length }} · Aciertos {{ hits }}</p>
+      <div class="kibar"><div :style="{ width: (left / seconds * 100) + '%' }" /></div>
+      <div class="qcard">{{ cur.q }}</div>
+      <div class="options">
+        <button v-for="(o, k) in cur.options" :key="o" class="answer" :disabled="answered"
+          :class="{ good: answered && o === cur.answer, bad: answered && o === picked && o !== cur.answer }"
+          @click="answer(o)"><b>{{ 'ABCD'[k] }}</b> {{ o }}</button>
+      </div>
+    </div>`,
+  setup (props, { emit }) {
+    const rounds = makeQuizRounds(props.config?.topic, props.config?.rounds || 5)
+    const seconds = props.config?.seconds || 12
+    const i = ref(0)
+    const hits = ref(0)
+    const answered = ref(false)
+    const picked = ref(null)
+    const left = ref(seconds)
+    const cur = ref(rounds[0])
+    const iv = setInterval(() => {
+      if (answered.value) return
+      left.value = Math.max(0, left.value - 0.1)
+      if (left.value <= 0) answer(null)
+    }, 100)
+    onBeforeUnmount(() => clearInterval(iv))
+    function answer (o) {
+      answered.value = true
+      picked.value = o
+      if (o === cur.value.answer) { hits.value++; chiptune.sfx('ok'); emit('hit', 'enemy') } else { chiptune.sfx('bad'); emit('hit', 'hero') }
+      setTimeout(() => {
+        if (i.value + 1 >= rounds.length) { clearInterval(iv); emit('end', hits.value >= Math.ceil(rounds.length * 0.6)); return }
+        i.value++
+        cur.value = rounds[i.value]
+        answered.value = false; picked.value = null; left.value = seconds
+      }, 1100)
+    }
+    return { rounds, seconds, i, hits, answered, picked, left, cur, answer }
+  }
+}
+
+// ============================================================ REFLEJOS (pesca / scouter)
+const REFLEX_THEMES = {
+  fish: { title: '¡Tira cuando el pez muerda!', icon: '🐟', zoneIcon: '🎣', button: '¡TIRAR!', okMsg: '¡Picó!', badMsg: '¡Se escapó!' },
+  scouter: { title: 'Sintoniza la frecuencia en la zona verde', icon: '📡', zoneIcon: '📶', button: '¡SINTONIZAR!', okMsg: '¡Señal captada!', badMsg: 'Solo ruido...' }
+}
+const Reflex = {
+  props: { config: Object, enemy: Object },
+  emits: ['end', 'hit'],
+  template: `
+    <div class="mg reflex" :class="theme">
+      <p class="score">Intento {{ Math.min(round + 1, rounds) }}/{{ rounds }} · Aciertos {{ hits }}</p>
+      <p class="tell">{{ msg }}</p>
+      <div class="meter">
+        <div class="zone" :style="{ left: zone[0] * 100 + '%', width: (zone[1] - zone[0]) * 100 + '%' }">{{ T.zoneIcon }}</div>
+        <div class="needle" :style="{ left: pos * 100 + '%' }">{{ T.icon }}</div>
+      </div>
+      <button class="btn primary big-action" :disabled="waiting" @click="shoot">{{ T.button }}</button>
+    </div>`,
+  setup (props, { emit }) {
+    const theme = props.config?.theme || 'fish'
+    const T = REFLEX_THEMES[theme] || REFLEX_THEMES.fish
+    const rounds = props.config?.rounds || 3
+    const round = ref(0)
+    const hits = ref(0)
+    const pos = ref(0)
+    const waiting = ref(false)
+    const msg = ref(T.title)
+    const zone = ref([0, 0])
+    let t0 = performance.now(); let speed = 0.6; let raf
+    function newZone () {
+      const w = Math.max(0.1, 0.22 - round.value * 0.05)
+      const s = 0.15 + Math.random() * (0.7 - w)
+      zone.value = [s, s + w]
+      speed = 0.55 + round.value * 0.25
+      t0 = performance.now()
+    }
+    const loop = () => { pos.value = needleAt((performance.now() - t0) / 1000, speed); raf = requestAnimationFrame(loop) }
+    function shoot () {
+      waiting.value = true
+      const ok = inZone(pos.value, zone.value)
+      if (ok) { hits.value++; chiptune.sfx('ok'); msg.value = T.okMsg; emit('hit', 'enemy') } else { chiptune.sfx('bad'); msg.value = T.badMsg; emit('hit', 'hero') }
+      setTimeout(() => {
+        round.value++
+        if (round.value >= rounds) { cancelAnimationFrame(raf); emit('end', hits.value >= Math.ceil(rounds * 0.6)); return }
+        newZone(); waiting.value = false; msg.value = T.title
+      }, 900)
+    }
+    onMounted(() => { newZone(); loop() })
+    onBeforeUnmount(() => cancelAnimationFrame(raf))
+    return { theme, T, rounds, round, hits, pos, waiting, msg, zone, shoot }
+  }
+}
+
+// ============================================================ MEMORIA (cápsulas)
+const Memory = {
+  props: { config: Object, enemy: Object },
+  emits: ['end', 'hit'],
+  template: `
+    <div class="mg memory">
+      <p class="score">Parejas {{ found }}/{{ pairs }} · Intentos restantes {{ tries }}</p>
+      <div class="cards">
+        <button v-for="(c, k) in deck" :key="c.id" class="card3d" :class="{ flip: open.includes(k) || done.includes(k), done: done.includes(k) }"
+          :disabled="busy || done.includes(k) || open.includes(k)" @click="flip(k)">
+          <span class="face back">CC</span>
+          <span class="face front"><b>{{ c.icon }}</b><small>{{ c.name }}</small></span>
+        </button>
+      </div>
+    </div>`,
+  setup (props, { emit }) {
+    const pairs = props.config?.pairs || 6
+    const deck = makeDeck(pairs)
+    const open = ref([])
+    const done = ref([])
+    const busy = ref(false)
+    const found = ref(0)
+    const tries = ref(props.config?.tries || pairs * 3)
+    function flip (k) {
+      open.value = [...open.value, k]
+      chiptune.sfx('step')
+      if (open.value.length < 2) return
+      busy.value = true
+      const [a, b] = open.value
+      const match = deck[a].name === deck[b].name
+      setTimeout(() => {
+        if (match) { done.value = [...done.value, a, b]; found.value++; chiptune.sfx('ok'); emit('hit', 'enemy') } else { tries.value--; chiptune.sfx('bad'); emit('hit', 'hero') }
+        open.value = []
+        busy.value = false
+        if (found.value >= pairs) emit('end', true)
+        else if (tries.value <= 0) emit('end', false)
+      }, match ? 450 : 800)
+    }
+    return { pairs, deck, open, done, busy, found, tries, flip }
   }
 }
 
 // ============================================================ REGISTRO
 // Para añadir un minijuego: crea el componente arriba y regístralo aquí.
+// emoji: icono para los rivales que no son personajes (un pez, una caja...)
 export const MINIGAMES = {
-  rps: { name: 'Jan-Ken (piedra, papel o tijera)', component: RockPaperScissors, help: 'Lee la pista del rival y gana al mejor de N.' },
-  tictactoe: { name: 'Tres en raya', component: TicTacToe, help: 'Consigue tres ⭕ en línea.' },
-  rhyme: { name: 'Duelo de rimas', component: RhymeBattle, help: 'Elige la palabra que rima antes de que acabe el tiempo.' },
-  kiseq: { name: 'Secuencia de ki', component: KiSequence, help: 'Repite la secuencia de colores. Cada vez es más larga.' },
-  shell: { name: 'Sigue la jarra', component: ShellGame, help: 'Vigila dónde queda el agua ultrasagrada.' }
+  rps: { name: 'Jan-Ken · Piedra, papel o tijera', component: RockPaperScissors, help: 'Lee la pista del rival y gana al mejor de N.' },
+  tictactoe: { name: 'Tres en raya', component: TicTacToe, help: 'Consigue tres esferas del dragón en línea.' },
+  rhyme: { name: 'Duelo de rimas', component: RhymeBattle, help: 'Elige la palabra que rima antes de que se agote el ki.' },
+  kiseq: { name: 'Secuencia de ki', component: KiSequence, help: 'Repite la secuencia de energía. Cada vez es más larga.' },
+  shell: { name: 'Sigue el objeto', component: ShellGame, help: 'Vigila dónde queda el premio mientras lo mezclan.' },
+  quiz: { name: 'Examen sorpresa', component: Quiz, help: 'Responde bien a la mayoría de preguntas antes de que acabe el tiempo.' },
+  reflex: { name: 'Reflejos', component: Reflex, help: 'Pulsa justo cuando la aguja esté en la zona verde.' },
+  memory: { name: 'Memoria de cápsulas', component: Memory, help: 'Encuentra todas las parejas antes de quedarte sin intentos.' }
 }
