@@ -301,6 +301,8 @@ export function extractSprite (img, opts = {}) {
   for (let x = 0; x < W; x += 2) { border.push(at(x, 0), at(x, H - 1)) }
   for (let y = 0; y < H; y += 2) { border.push(at(0, y), at(W - 1, y)) }
   const bgRef = [0, 1, 2].map(ch => border.map(p => p[ch]).sort((a, b) => a - b)[border.length >> 1])
+  // colores de fondo conocidos (p. ej. los que detecta detectSprites en una lámina)
+  const isBgColor = q => opts.bgColors?.some(b => dist(b, q) < tol)
   const bg = new Uint8Array(rows * cols)
   const queue = []
   const seed = (r, c) => { const i = r * cols + c; if (!bg[i]) { bg[i] = 1; queue.push(i) } }
@@ -317,13 +319,14 @@ export function extractSprite (img, opts = {}) {
       if (bg[j]) continue
       const q = cells[j]
       // parecido al vecino de fondo, o muy claro (brillos, lunas, auras): sigue siendo fondo
-      if (!q || (p && dist(p, q) < tol && lum(q) > 70) || (!p && dist(q, bgRef) < tol * 1.6) || (opts.bright !== false && lum(q) > (opts.brightLum ?? 200))) { bg[j] = 1; queue.push(j) }
+      if (!q || (p && dist(p, q) < tol && lum(q) > 70) || isBgColor(q) || (!p && dist(q, bgRef) < tol * 1.6) || (opts.bright !== false && lum(q) > (opts.brightLum ?? 200))) { bg[j] = 1; queue.push(j) }
     }
   }
   // huecos cerrados (entre brazo y cuerpo) con el color del fondo
   const bgSamples = []
   cells.forEach((p, i) => { if (p && bg[i] && bgSamples.length < 400 && (i % 7 === 0)) bgSamples.push(p) })
   cells.forEach((p, i) => {
+    if (p && !bg[i] && isBgColor(p)) { bg[i] = 1; return }
     if (!p || bg[i] || lum(p) < 70) return
     if (bgSamples.some(b => dist(b, p) < (opts.pocketTol ?? 22))) bg[i] = 1
   })
@@ -445,6 +448,7 @@ export function detectSprites (img, opts = {}) {
     .map(b => [Math.max(0, b[0] - pad), Math.max(0, b[1] - pad), Math.min(W, b[2] + pad + 1), Math.min(H, b[3] + pad + 1)])
   // orden de lectura: por filas (según el centro vertical) y de izquierda a derecha
   const rowH = Math.max(40, Math.min(...out.map(b => b[3] - b[1])) * 0.6)
+  out.bg = bgKeys
   return out.sort((a, b) => Math.round(((a[1] + a[3]) / 2) / rowH) - Math.round(((b[1] + b[3]) / 2) / rowH) || a[0] - b[0])
 }
 

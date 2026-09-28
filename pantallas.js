@@ -9,7 +9,7 @@ import * as THREE from 'three'
 import {
   createRetroRenderer, attachGestures, pointerNDC, latLonToDir, greatCirclePoints, starfield,
   buildDiorama, landmarkModel, heroModel, VISUAL_STYLES,
-  characterModel, characterName, spriteToVoxels, kintonModel, propModel, treeModel, imageToGrid, extractSprite, chiptune,
+  characterModel, characterName, spriteToVoxels, kintonModel, propModel, treeModel, imageToGrid, extractSprite, detectSprites, chiptune,
   findPath, isLocationUnlocked, validateMission
 } from './motor.js'
 import { WORLDS, getWorld, getLocation, MAPS, TILES, TRACKS } from './mundos.js'
@@ -907,6 +907,15 @@ export const CharacterEditor = {
   template: `
     <div class="char-editor">
       <section class="card gallery">
+        <div class="tools">
+          <button class="btn small primary" @click="newChar">＋ Nuevo personaje</button>
+          <label class="btn small file">🗂 Recortar de lámina<input type="file" accept="image/*" @change="loadSheet" /></label>
+        </div>
+        <div v-if="sheet" class="sheet">
+          <p class="muted">Toca un personaje de la lámina para pasarlo al editor ({{ sheetBoxes.length }} detectados).
+            <button class="btn small" @click="sheet = null">✕ Cerrar</button></p>
+          <div class="sheet-wrap"><canvas ref="sheetCv" class="sheet-cv" @click="pickFromSheet" /></div>
+        </div>
         <div v-for="g in groups" :key="g.name" class="group">
           <h3>{{ g.name }}</h3>
           <div class="cards">
@@ -922,8 +931,16 @@ export const CharacterEditor = {
       <section class="card editor-body">
         <div class="editor-top">
           <label class="name">Nombre <input v-model="work.name" @input="dirty = true" /></label>
-          <small class="muted">{{ work.grid[0]?.length }}×{{ work.grid.length }} px</small>
+          <small class="muted">{{ work.grid[0]?.length }}×{{ work.grid.length }} px · id: {{ selId }}</small>
         </div>
+        <label class="size">Tamaño en el juego
+          <select :value="sizePreset" @change="setSize(+$event.target.value)">
+            <option v-for="o in SIZES" :key="o.v" :value="o.v">{{ o.label }}</option>
+            <option v-if="!SIZES.some(o => o.v === sizePreset)" :value="sizePreset">Actual (×{{ size.toFixed(2) }})</option>
+          </select>
+          <input v-model.number="size" type="range" min="0.4" max="2.6" step="0.05" @input="dirty = true; schedulePreview()" />
+          <small class="muted">×{{ size.toFixed(2) }} respecto a Goku adulto</small>
+        </label>
 
         <div class="workspace">
           <div class="canvas-wrap">
@@ -987,7 +1004,7 @@ export const CharacterEditor = {
         <div class="tools">
           <button class="btn primary" :disabled="!dirty" @click="save">💾 Guardar</button>
           <button class="btn" :disabled="!dirty" @click="select(selId)">Descartar</button>
-          <button v-if="sprites.custom[selId]" class="btn danger" @click="restore">↺ Original</button>
+          <button v-if="sprites.custom[selId]" class="btn danger" @click="restore">{{ CHARACTERS[selId] ? '↺ Original' : '🗑 Borrar' }}</button>
           <button class="btn" @click="copyCode">📋 Copiar código</button>
         </div>
         <p v-if="msg" class="ok">{{ msg }}</p>
@@ -1001,7 +1018,24 @@ export const CharacterEditor = {
       { id: 'fill', label: '🪣 Rellenar' },
       { id: 'pick', label: '💧 Cuentagotas' }
     ]
-    const groups = CHARACTER_GROUPS
+    const SIZES = [
+      { v: 0.72, label: '🧒 Niño (Goku pequeño, Krilin)' },
+      { v: 0.8, label: '🧑 Bajito (Bulma, Chaozu)' },
+      { v: 1, label: '🧍 Adulto (Goku, Vegeta)' },
+      { v: 1.3, label: '💪 Grande (Piccolo, Raditz)' },
+      { v: 2, label: '🦖 Gigante (Ozaru, dinosaurio)' }
+    ]
+    const groups = computed(() => {
+      const known = new Set(CHARACTER_GROUPS.flatMap(g => g.ids))
+      const extra = Object.keys(sprites.custom).filter(id => !known.has(id))
+      return extra.length ? [...CHARACTER_GROUPS, { name: 'Personalizados (añadidos desde Admin)', ids: extra }] : CHARACTER_GROUPS
+    })
+    const size = ref(1)
+    const sizePreset = computed(() => SIZES.find(o => Math.abs(o.v - size.value) < 0.03)?.v ?? size.value)
+    const sheet = shallowRef(null)
+    const sheetBoxes = ref([])
+    const sheetCv = ref(null)
+    let sheetBg = null
     const selId = ref('goku')
     const work = ref({ name: '', grid: [[]], palette: {} })
     const tool = ref('paint')
@@ -1027,7 +1061,8 @@ export const CharacterEditor = {
       { key: 'sleeves', label: 'Mangas', def: 'short' }
     ]
     let pixelEdited = false
-    const source = id => sprites.custom[id] || { ...CHARACTERS[id], palette: CHARACTERS[id].palette || PALETTE }
+    const BLANK = () => ({ name: 'Nuevo', grid: Array.from({ length: 32 }, () => '.'.repeat(24)), palette: { ...PALETTE }, ref: 32 })
+    const source = id => sprites.custom[id] || (CHARACTERS[id] ? { ...CHARACTERS[id], palette: CHARACTERS[id].palette || PALETTE } : BLANK())
     const displayName = id => characterName(id)
     const gridStrings = () => work.value.grid.map(r => r.join(''))
 
@@ -1042,6 +1077,7 @@ export const CharacterEditor = {
         spec: s.spec ? JSON.parse(JSON.stringify(s.spec)) : null
       }
       pixelEdited = Boolean(s.pixelEdited)
+      size.value = Math.round(s.grid.length / (s.ref || CHARACTERS[id]?.ref || s.grid.length) * 100) / 100
       color.value = Object.keys(work.value.palette)[0]
       history.value = []
       dirty.value = false
@@ -1206,6 +1242,78 @@ export const CharacterEditor = {
       redraw()
     }
 
+    function setSize (v) { size.value = v; dirty.value = true; schedulePreview() }
+
+    // ---------- personajes nuevos ----------
+    function newChar () {
+      const name = prompt('Nombre del nuevo personaje (p. ej. Mai, Yajirobe, Kaio…)')
+      if (!name) return
+      let id = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'personaje'
+      while (CHARACTERS[id] || sprites.custom[id]) id += '_2'
+      select(id)
+      work.value.name = name
+      size.value = 1
+      dirty.value = true
+      msg.value = 'Dibuja el personaje, importa una imagen o recórtalo de una lámina, y pulsa Guardar.'
+    }
+
+    // ---------- recortar de una lámina con muchos personajes ----------
+    function loadSheet (e) {
+      const file = e.target.files[0]
+      if (!file) return
+      const im = new Image()
+      im.onload = () => {
+        sheet.value = im
+        const boxes = detectSprites(im)
+        sheetBg = boxes.bg
+        sheetBoxes.value = boxes
+        drawSheet()
+      }
+      im.src = URL.createObjectURL(file)
+      e.target.value = ''
+    }
+    function drawSheet () {
+      nextTick(() => {
+        const c = sheetCv.value
+        const im = sheet.value
+        if (!c || !im) return
+        c.width = im.naturalWidth
+        c.height = im.naturalHeight
+        const ctx = c.getContext('2d')
+        ctx.imageSmoothingEnabled = false
+        ctx.drawImage(im, 0, 0)
+        ctx.lineWidth = Math.max(2, im.naturalWidth / 300)
+        sheetBoxes.value.forEach(([x0, y0, x1, y1], i) => {
+          ctx.strokeStyle = '#ffd23f'
+          ctx.strokeRect(x0 + 0.5, y0 + 0.5, x1 - x0, y1 - y0)
+          ctx.fillStyle = '#ffd23f'
+          ctx.font = `bold ${Math.max(12, im.naturalWidth / 70)}px sans-serif`
+          ctx.fillText(String(i + 1), x0 + 3, y0 + Math.max(12, im.naturalWidth / 70))
+        })
+      })
+    }
+    function pickFromSheet (e) {
+      const c = sheetCv.value
+      const r = c.getBoundingClientRect()
+      const x = (e.clientX - r.left) / r.width * c.width
+      const y = (e.clientY - r.top) / r.height * c.height
+      // la caja más pequeña que contiene el punto (por si se solapan)
+      const hit = sheetBoxes.value.filter(b => x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3])
+        .sort((a, b) => (a[2] - a[0]) * (a[3] - a[1]) - (b[2] - b[0]) * (b[3] - b[1]))[0]
+      if (!hit) return
+      snapshot()
+      const res = extractSprite(sheet.value, { box: hit, maxColors: imgColors.value, bgColors: sheetBg })
+      const keep = size.value
+      work.value.grid = res.grid.map(row => [...row])
+      work.value.palette = res.palette
+      color.value = Object.keys(res.palette)[0]
+      size.value = keep
+      pixelEdited = true
+      dirty.value = true
+      msg.value = 'Recortado. Retoca si hace falta y pulsa Guardar.'
+      redraw()
+    }
+
     // ---------- guardar / exportar ----------
     async function save () {
       const { name, palette } = work.value
@@ -1214,15 +1322,17 @@ export const CharacterEditor = {
       const used = new Set(grid.join(''))
       const pal = Object.fromEntries(Object.entries(palette).filter(([k]) => used.has(k)))
       const spec = work.value.spec ? { ...work.value.spec, name } : null
-      await sprites.save(selId.value, { name, grid, palette: pal, spec, pixelEdited, ref: CHARACTERS[selId.value]?.ref })
+      const ref = Math.round(grid.length / size.value * 10) / 10
+      await sprites.save(selId.value, { name, grid, palette: pal, spec, pixelEdited, ref })
       dirty.value = false
       msg.value = '✔ Guardado. El juego ya usa esta versión.'
       drawThumbs()
     }
     async function restore () {
       if (!confirm('¿Volver al sprite original?')) return
-      await sprites.remove(selId.value)
-      select(selId.value)
+      const id = selId.value
+      await sprites.remove(id)
+      select(CHARACTERS[id] ? id : 'goku')
       drawThumbs()
     }
     function copyCode () {
@@ -1244,7 +1354,7 @@ export const CharacterEditor = {
 
     function drawThumbs () {
       nextTick(() => {
-        for (const g of groups) {
+        for (const g of groups.value) {
           for (const id of g.ids) {
             const s = source(id)
             drawSprite(thumbs[id], s.grid, s.palette || PALETTE, Math.max(2, Math.round(64 / s.grid.length)))
@@ -1263,7 +1373,7 @@ export const CharacterEditor = {
       if (!scene) return
       if (model) scene.remove(model)
       const rows = work.value.grid.length
-      model = spriteToVoxels(gridStrings(), work.value.palette, { size: 1.6 / rows, depth: Math.max(1.5, rows / 18) })
+      model = spriteToVoxels(gridStrings(), work.value.palette, { size: 1.2 * size.value / rows, depth: Math.max(1.5, rows / 18) })
       scene.add(model)
     }
     onMounted(() => {
@@ -1295,6 +1405,7 @@ export const CharacterEditor = {
 
     return {
       DESIGN_FIELDS, SPEC_OPTIONS, EXTRA_LABELS, COLOR_LABELS, DEFAULTS, setSpec, setColor,
+      SIZES, size, sizePreset, setSize, schedulePreview, newChar, loadSheet, pickFromSheet, sheet, sheetBoxes, sheetCv, CHARACTERS,
       TOOLS, groups, selId, work, tool, color, history, dirty, msg, code, board, preview, thumbs, img, imgSize, imgColors, imgPixelArt,
       sprites, displayName, select, undo, onDown, onMove, onUp, recolor, addColor, double, loadImage, applyImage,
       save, restore, copyCode

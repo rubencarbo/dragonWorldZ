@@ -384,3 +384,11 @@ a { color: inherit; text-decoration: none; }
 
 .location-view .board.done { font-size: 9px; }
 .location-view .board.done b { color: #9ef09e; }
+
+/* Admin · recortar personajes de una lámina */
+.char-editor .sheet { margin: 8px 0; }
+.char-editor .sheet p { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.char-editor .sheet-wrap { max-height: 60vh; overflow: auto; border: 2px solid #ffd23f55; border-radius: 8px; background: #111; }
+.char-editor .sheet-cv { display: block; width: 100%; height: auto; image-rendering: pixelated; cursor: crosshair; }
+.char-editor label.size { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 10px; font-size: .85rem; }
+.char-editor label.size select { max-width: 320px; }
