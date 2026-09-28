@@ -119,6 +119,14 @@ export const QUIZ = {
     ['Sube llena y baja vacía... ¿qué es?', 'La cuchara', 'La torre', 'El ascensor', 'La jarra'],
     ['Tengo agujas y no sé coser, tengo números y no sé leer.', 'El reloj', 'El erizo', 'El scouter', 'Un libro'],
     ['Soy blanco como la nieve y en la taza me derrito.', 'El azúcar', 'La leche', 'Una nube', 'El hielo']
+  ],
+  // Libro 1 · capítulo de Oolong: descubre su punto débil
+  oolong: [
+    ['¿Cuánto tiempo aguanta Oolong transformado?', '5 minutos', '1 hora', 'Un día', 'Para siempre'],
+    ['¿Por qué lo expulsaron de la escuela de transformaciones?', 'Por hacer trampas', 'Por dormirse', 'Por comer mucho', 'Por volar'],
+    ['¿Qué hace Oolong cuando Bulma dice «pi-pi-pi»?', 'Corre al lavabo', 'Se transforma', 'Canta', 'Se duerme'],
+    ['¿En qué NO se ha transformado Oolong?', 'En tortuga', 'En toro gigante', 'En robot', 'En murciélago'],
+    ['¿Qué quería Oolong de las chicas del pueblo?', 'Que le cocinaran', 'Sus bolas de drac', 'Su dinero', 'Sus vacas']
   ]
 }
 export function makeQuizRounds (topic, n, rnd = Math.random, quiz = QUIZ) {
@@ -512,7 +520,10 @@ const Quiz = {
 // ============================================================ REFLEJOS (pesca / scouter)
 const REFLEX_THEMES = {
   fish: { title: '¡Tira cuando el pez muerda!', icon: '🐟', zoneIcon: '🎣', button: '¡TIRAR!', okMsg: '¡Picó!', badMsg: '¡Se escapó!' },
-  scouter: { title: 'Sintoniza la frecuencia en la zona verde', icon: '📡', zoneIcon: '📶', button: '¡SINTONIZAR!', okMsg: '¡Señal captada!', badMsg: 'Solo ruido...' }
+  scouter: { title: 'Sintoniza la frecuencia en la zona verde', icon: '📡', zoneIcon: '📶', button: '¡SINTONIZAR!', okMsg: '¡Señal captada!', badMsg: 'Solo ruido...' },
+  nyoibo: { title: '¡Estira el bastón cuando pase el pterodáctilo!', icon: '🦅', zoneIcon: '🎯', button: '¡CRECE, NYOIBO!', okMsg: '¡Le has dado!', badMsg: '¡Ha esquivado el bastón!' },
+  wish: { title: '¡Grita tu deseo justo cuando Pilaf tome aire!', icon: '🐉', zoneIcon: '🤫', button: '¡QUIERO...!', okMsg: '¡Te ha oído Shenron!', badMsg: '¡Pilaf te ha tapado la boca!' },
+  kamehameha: { title: 'Suelta la onda cuando la energía esté a tope', icon: '🔵', zoneIcon: '💥', button: '¡KAMEHAMEHA!', okMsg: '¡Onda perfecta!', badMsg: '¡Se ha deshecho!' }
 }
 const Reflex = {
   props: { config: Object, enemy: Object },

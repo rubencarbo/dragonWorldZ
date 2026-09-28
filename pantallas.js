@@ -9,14 +9,15 @@ import * as THREE from 'three'
 import {
   createRetroRenderer, attachGestures, pointerNDC, latLonToDir, greatCirclePoints, starfield,
   buildDiorama, landmarkModel, heroModel, VISUAL_STYLES,
-  characterModel, characterName, spriteToVoxels, kintonModel, propModel, treeModel, imageToGrid, extractSprite, detectSprites, chiptune,
+  characterModel, characterName, spriteData, spriteToVoxels, kintonModel, propModel, treeModel, imageToGrid, extractSprite, detectSprites, chiptune,
   findPath, isLocationUnlocked, validateMission
 } from './motor.js'
 import { WORLDS, getWorld, getLocation, MAPS, TILES, TRACKS } from './mundos.js'
 import { CHARACTERS, CHARACTER_GROUPS, PALETTE, buildSprite, SPEC_OPTIONS, EXTRA_LABELS, COLOR_LABELS, DEFAULTS } from './personajes.js'
 import { MINIGAMES } from './minijuegos.js'
-import { game, settings, missions, sprites, go, fb, firebaseEnabled, COMIC_FONTS } from './app.js'
-import { t, tx, LANGS } from './idiomas.js'
+import { game, settings, missions, sprites, go, fb, firebaseEnabled, COMIC_FONTS, bubbleKind } from './app.js'
+import { i18n, t, tx, LANGS } from './idiomas.js'
+import { BOOKS, paintPanel, actorBox, W as PW, H as PH } from './historia.js'
 
 
 // ============================================================ BOLA DEL MUNDO
@@ -1635,5 +1636,323 @@ export const AdminView = {
 
     onMounted(() => { if (missions.all[0]) edit(missions.all[0]) })
     return { firebaseEnabled, user, login, tab, newMission, exportPack, importOpen, importText, importPack, byPack, editingId, edit, missions, isPublished, draft, validate, publish, remove, errors, okMsg, MAPS, helpMap, helpLoc, MINIGAMES, CHARACTERS, TRACKS }
+  }
+}
+
+// ============================================================ RETRATO
+// Retrato pixel-art de un personaje (o un emoji si no tiene sprite). `bust` = cabeza y hombros
+export const Portrait = {
+  props: { id: String, emoji: String, flip: Boolean, bust: Boolean },
+  template: `<div class="portrait" :class="{ flip, bust }"><canvas v-if="!emoji" ref="cv" /><span v-else class="emoji">{{ emoji }}</span></div>`,
+  setup (props) {
+    const cv = ref(null)
+    function draw () {
+      const sp = spriteData(props.id)
+      if (!cv.value || !sp) return
+      const g = sp.grid
+      const w = Math.max(...g.map(r => r.length))
+      // busto: cabeza y hombros (la parte de arriba del sprite, con píxeles)
+      let top = 0
+      while (top < g.length - 1 && !/[^.]/.test(g[top])) top++
+      const rows = props.bust ? Math.min(g.length - top, Math.max(12, Math.round(w * 0.95))) : g.length
+      const y0 = props.bust ? top : 0
+      cv.value.width = w; cv.value.height = rows
+      const ctx = cv.value.getContext('2d')
+      ctx.clearRect(0, 0, w, rows)
+      for (let y = 0; y < rows; y++) {
+        const row = g[y0 + y] || ''
+        for (let x = 0; x < row.length; x++) {
+          const c = sp.palette?.[row[x]]
+          if (c) { ctx.fillStyle = c; ctx.fillRect(x, y, 1, 1) }
+        }
+      }
+    }
+    onMounted(draw)
+    watch(() => props.id, () => nextTick(draw))
+    return { cv }
+  }
+}
+// ============================================================ MODO HISTORIA (libro de cómic)
+// #/libro → índice del libro · #/libro/c1 → lectura del capítulo 1
+export const LibroView = {
+  components: { Portrait },
+  props: { chapterId: String },
+  template: `
+    <div class="book-view">
+      <div v-if="!chapter" class="page book-index">
+        <header class="page-head">
+          <a href="#/" class="btn small">{{ t('◀ Globo') }}</a>
+          <h1>📖 {{ t('Modo Historia') }}</h1>
+        </header>
+        <section class="book-cover">
+          <canvas ref="coverCv" class="panel-cv" width="320" height="200" />
+          <div class="cover-title">
+            <b>{{ tx(book.title) }}</b>
+            <small>{{ tx(book.subtitle) }}</small>
+          </div>
+        </section>
+        <ol class="chapters">
+          <li v-for="(c, i) in book.chapters" :key="c.id" class="card" :class="{ locked: !unlocked(i), done: isDone(c) }">
+            <Portrait :id="c.hero" bust class="ch-hero" />
+            <div class="ch-info">
+              <b>{{ t('Capítulo {n}', { n: i + 1 }) }} · {{ tx(c.title) }}</b>
+              <small>{{ tx(c.teaser) }}</small>
+              <em>{{ t('Lo vives como: {h}', { h: characterName(c.hero) }) }}</em>
+            </div>
+            <button class="btn primary small" :disabled="!unlocked(i)" @click="go('/libro/' + c.id)">
+              {{ !unlocked(i) ? '🔒' : isDone(c) ? t('Releer') : savedPage(c) ? t('Continuar') : t('Leer') }}
+            </button>
+          </li>
+        </ol>
+      </div>
+
+      <div v-else class="reader">
+        <header class="reader-top">
+          <button class="btn small" @click="go('/libro')">✕</button>
+          <div class="who-am-i">
+            <Portrait :id="chapter.hero" bust class="mini" />
+            <span>{{ t('Eres {h}', { h: characterName(chapter.hero) }) }}</span>
+          </div>
+          <small>{{ t('Cap. {n}', { n: chapterIndex + 1 }) }} · {{ pageIndex + 1 }}/{{ chapter.pages.length }}</small>
+        </header>
+
+        <transition name="pageflip" mode="out-in">
+          <div class="panel-wrap" :key="chapter.id + ':' + pageIndex" @click="next">
+            <canvas :ref="setCv" class="panel-cv" width="320" height="200" />
+            <div v-if="fxText" :key="fxKey" class="fx comic-text">{{ fxText }}</div>
+            <template v-if="phase === 'explore'">
+              <button v-for="s in page.spots" :key="s.key" class="spot" :class="{ found: found.includes(s.key), need: s.need }"
+                :style="spotStyle(s)" @click.stop="tapSpot(s)"><span>{{ tx(s.label) }}</span></button>
+            </template>
+          </div>
+        </transition>
+
+        <div class="text-zone" @click="next">
+          <template v-if="beat && !beat.fx">
+            <div v-if="beat.cap" class="caption-box comic-text"><p>{{ shown }}<span class="caret">▶</span></p></div>
+            <div v-else-if="beat.me" class="caption-box me comic-text">
+              <Portrait :id="chapter.hero" bust class="mini" />
+              <p>{{ shown }}<span class="caret">▶</span></p>
+            </div>
+            <div v-else class="bubble up comic-text" :class="bubble" :style="{ '--tail': tailX + '%' }">
+              <b class="who">{{ speaker }}</b>
+              <p>{{ shown }}<span class="caret">▶</span></p>
+            </div>
+          </template>
+          <div v-else-if="phase === 'explore'" class="goal card">
+            <b>🔍 {{ tx(page.goal) }}</b>
+            <small>{{ t('Toca los objetos de la viñeta · pistas clave: {a}/{b}', { a: foundNeeded, b: needed }) }}</small>
+            <button v-if="foundNeeded >= needed" class="btn primary" @click.stop="finishExplore">{{ t('Continuar ▶') }}</button>
+          </div>
+          <div v-else-if="phase === 'retry'" class="goal card">
+            <b>{{ t('¡Casi! ¿Lo intentas otra vez?') }}</b>
+            <div class="row-btns">
+              <button class="btn primary" @click.stop="startBattle">{{ t('Reintentar') }}</button>
+              <button v-if="fails >= 2" class="btn" @click.stop="skipBattle">{{ t('Seguir leyendo') }}</button>
+            </div>
+          </div>
+          <div v-else-if="phase === 'end'" class="goal card chapter-end">
+            <b>⭐ {{ t('¡Fin del capítulo {n}!', { n: chapterIndex + 1 }) }}</b>
+            <small>{{ tx(chapter.title) }}</small>
+            <div class="row-btns">
+              <button v-if="nextChapter" class="btn primary" @click.stop="go('/libro/' + nextChapter.id)">{{ t('Siguiente capítulo ▶') }}</button>
+              <button class="btn" @click.stop="go('/libro')">{{ t('Índice del libro') }}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`,
+  setup (props) {
+    const book = BOOKS[0]
+    const chapterIndex = computed(() => book.chapters.findIndex(c => c.id === props.chapterId))
+    const chapter = computed(() => book.chapters[chapterIndex.value] || null)
+    const nextChapter = computed(() => book.chapters[chapterIndex.value + 1] || null)
+    const story = () => {
+      game.progress.story ||= {}
+      return (game.progress.story[book.id] ||= { done: [], at: {} })
+    }
+    const isDone = c => story().done.includes(c.id)
+    const unlocked = i => i === 0 || isDone(book.chapters[i - 1])
+    const savedPage = c => story().at[c.id] || 0
+
+    // ---------- estado de la lectura ----------
+    const pageIndex = ref(0)
+    const page = computed(() => chapter.value?.pages[pageIndex.value])
+    const actors = ref([])
+    const queue = ref([])
+    const qi = ref(0)
+    const phase = ref('intro') // intro | explore | spot | done | battle | after | lose | retry | end
+    const found = ref([])
+    const fails = ref(0)
+    const beat = computed(() => queue.value[qi.value] || null)
+    const needed = computed(() => (page.value?.spots || []).filter(s => s.need).length)
+    const foundNeeded = computed(() => (page.value?.spots || []).filter(s => s.need && found.value.includes(s.key)).length)
+    const fxText = ref('')
+    const fxKey = ref(0)
+    let cv = null
+
+    const clone = o => JSON.parse(JSON.stringify(o))
+    function play (beats, ph) {
+      phase.value = ph
+      queue.value = beats || []
+      qi.value = 0
+      if (!queue.value.length) onQueueEnd()
+    }
+    function loadPage () {
+      actors.value = clone(page.value.actors || [])
+      found.value = []
+      fails.value = 0
+      fxText.value = ''
+      story().at[chapter.value.id] = pageIndex.value
+      game.save()
+      play(page.value.beats, 'intro')
+    }
+    function nextPage () {
+      if (pageIndex.value + 1 < chapter.value.pages.length) {
+        pageIndex.value++
+        chiptune.sfx('step')
+        loadPage()
+      } else {
+        const s = story()
+        if (!s.done.includes(chapter.value.id)) s.done.push(chapter.value.id)
+        s.at[chapter.value.id] = 0
+        game.save()
+        chiptune.play('victoria')
+        queue.value = []
+        phase.value = 'end'
+      }
+    }
+    function onQueueEnd () {
+      const p = page.value
+      queue.value = []
+      if (phase.value === 'intro') {
+        if (p.type === 'explore') phase.value = 'explore'
+        else if (p.type === 'battle') startBattle()
+        else nextPage()
+      } else if (phase.value === 'spot') phase.value = 'explore'
+      else if (phase.value === 'done' || phase.value === 'after') nextPage()
+      else if (phase.value === 'lose') phase.value = 'retry'
+    }
+
+    // efectos de cada viñeta: mover/añadir actores, onomatopeyas
+    watch(beat, b => {
+      if (!b) return
+      for (const a of b.add || []) actors.value.push(clone(a))
+      for (const [key, patch] of Object.entries(b.set || {})) {
+        const a = actors.value.find(x => (x.key || x.id || x.thing) === key)
+        if (a) Object.assign(a, patch)
+      }
+      if (b.fx) {
+        fxText.value = tx(b.fx)
+        fxKey.value++
+        chiptune.sfx('bad')
+        clearTimeout(fxTimer)
+        fxTimer = setTimeout(() => { if (beat.value === b) next() }, 1100)
+      }
+      typewrite()
+    })
+    let fxTimer
+
+    // texto con efecto máquina de escribir
+    const text = computed(() => { const b = beat.value; return b ? tx(b.cap || b.me || b.say || '') : '' })
+    const shown = ref('')
+    let iv
+    function typewrite () {
+      clearInterval(iv)
+      const full = text.value
+      shown.value = ''
+      if (!full) return
+      if (!settings.textSpeed) { shown.value = full; return }
+      let i = 0
+      iv = setInterval(() => { shown.value = full.slice(0, ++i); if (i >= full.length) clearInterval(iv) }, settings.textSpeed)
+    }
+    watch(() => i18n.lang, typewrite)
+    function next () {
+      if (!beat.value) return
+      if (shown.value.length < text.value.length) { clearInterval(iv); shown.value = text.value; return }
+      if (!beat.value.fx) chiptune.sfx('talk')
+      if (beat.value.fx) fxText.value = ''
+      if (qi.value < queue.value.length - 1) qi.value++
+      else onQueueEnd()
+    }
+
+    // ---------- bocadillos ----------
+    const actorOf = key => actors.value.find(a => (a.key || a.id || a.thing) === key)
+    const speaker = computed(() => {
+      const w = beat.value?.who
+      if (!w) return ''
+      if (book.names[w]) return tx(book.names[w])
+      return characterName(actorOf(w)?.id || w)
+    })
+    const tailX = computed(() => Math.max(8, Math.min(92, (actorOf(beat.value?.who)?.x ?? 0.5) * 100)))
+    const bubble = computed(() => bubbleKind({ who: beat.value?.who, text: text.value }))
+
+    // ---------- exploración ----------
+    function spotStyle (s) {
+      let b = s.box
+      if (s.actor) {
+        const a = actorOf(s.actor)
+        if (a) { const r = actorBox(a); b = [r.x / PW, r.y / PH, r.w / PW, r.h / PH] }
+      }
+      if (!b) return { display: 'none' }
+      return { left: b[0] * 100 + '%', top: b[1] * 100 + '%', width: b[2] * 100 + '%', height: b[3] * 100 + '%' }
+    }
+    function tapSpot (s) {
+      if (phase.value !== 'explore') return
+      if (!found.value.includes(s.key)) found.value.push(s.key)
+      chiptune.sfx(s.need ? 'coin' : 'step')
+      play(s.lines, 'spot')
+    }
+    function finishExplore () { play(page.value.done, 'done') }
+
+    // ---------- combates ----------
+    function startBattle () {
+      const p = page.value
+      phase.value = 'battle'
+      queue.value = []
+      game.battle = {
+        step: { game: p.game, config: p.config || {} },
+        enemy: { name: tx(p.enemy.name), sprite: p.enemy.sprite, emoji: p.enemy.emoji },
+        hero: p.hero || chapter.value.hero,
+        music: chapter.value.music,
+        onEnd: won => {
+          if (won) play(p.win, 'after')
+          else { fails.value++; play(p.lose, 'lose') }
+        }
+      }
+      chiptune.play('batalla')
+    }
+    function skipBattle () { play(page.value.win, 'after') }
+
+    // ---------- dibujo de la viñeta ----------
+    let raf
+    const coverCv = ref(null)
+    const coverActors = [
+      { id: 'shenron', x: 0.5, y: 0.86, h: 0.84, anim: 'fly', noShadow: true },
+      { id: 'goku_nino', x: 0.2, y: 0.97, h: 0.34 },
+      { id: 'bulma_joven', x: 0.82, y: 0.97, h: 0.42, flip: true }
+    ]
+    const loop = () => {
+      const time = performance.now() / 1000
+      if (chapter.value && cv && page.value) paintPanel(cv.getContext('2d'), page.value, actors.value, time)
+      else if (coverCv.value) paintPanel(coverCv.value.getContext('2d'), { scene: 'shenron' }, coverActors, time)
+      raf = setTimeout(() => requestAnimationFrame(loop), 66) // ~15 fps, como un PC de los 90
+    }
+    onMounted(() => {
+      if (chapter.value) {
+        if (chapterIndex.value > 0 && !unlocked(chapterIndex.value)) { go('/libro'); return }
+        pageIndex.value = savedPage(chapter.value) < chapter.value.pages.length ? savedPage(chapter.value) : 0
+        loadPage()
+        chiptune.play(chapter.value.music)
+      } else chiptune.play('globo')
+      loop()
+    })
+    onBeforeUnmount(() => { clearTimeout(raf); clearInterval(iv); clearTimeout(fxTimer); if (game.battle?.onEnd) game.battle = null })
+
+    return {
+      book, chapter, chapterIndex, nextChapter, page, pageIndex, actors, beat, phase, found, fails, needed, foundNeeded,
+      fxText, fxKey, shown, speaker, tailX, bubble, coverCv, setCv: el => { if (el) cv = el },
+      isDone, unlocked, savedPage, next, tapSpot, spotStyle, finishExplore, startBattle, skipBattle, characterName, go
+    }
   }
 }

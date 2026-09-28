@@ -168,3 +168,36 @@ describe('català', () => {
     expect(src.replace(/\/\/.*$/gm, '')).not.toMatch(/ona vital/i)
   })
 })
+
+// ---------- Modo Historia ----------
+describe('Libro 1', () => {
+  it('guion válido: escenas, personajes, minijuegos y textos en los dos idiomas', async () => {
+    const { BOOKS, SCENES } = await import('../historia.js')
+    const { MINIGAMES } = await import('../minijuegos.js')
+    const problems = []
+    const checkText = (v, where) => { if (!v?.es || !v?.ca) problems.push('texto sin idioma en ' + where) }
+    for (const book of BOOKS) {
+      expect(book.chapters.length).toBeGreaterThanOrEqual(6)
+      for (const ch of book.chapters) {
+        if (!CHARACTERS[ch.hero]) problems.push(`${ch.id}: protagonista ${ch.hero}`)
+        checkText(ch.title, ch.id)
+        ch.pages.forEach((p, i) => {
+          const where = `${ch.id} pág ${i + 1}`
+          if (!SCENES[p.scene]) problems.push(`${where}: escena ${p.scene}`)
+          const actors = [...(p.actors || [])]
+          const beats = [...(p.beats || []), ...(p.win || []), ...(p.lose || []), ...(p.done || []), ...(p.spots || []).flatMap(s => s.lines)]
+          for (const b of beats) {
+            actors.push(...(b.add || []))
+            const txt = b.cap || b.me || b.say || b.fx
+            checkText(txt, where)
+            if (b.say && !book.names[b.who] && !actors.some(a => (a.key || a.id) === b.who)) problems.push(`${where}: habla ${b.who} y no está en la viñeta`)
+          }
+          for (const a of actors) if (a.id && !CHARACTERS[a.id]) problems.push(`${where}: sprite ${a.id}`)
+          if (p.type === 'battle' && !MINIGAMES[p.game]) problems.push(`${where}: minijuego ${p.game}`)
+          if (p.type === 'explore' && !(p.spots || []).some(s => s.need)) problems.push(`${where}: exploración sin pistas clave`)
+        })
+      }
+    }
+    expect(problems).toEqual([])
+  })
+})

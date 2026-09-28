@@ -6,7 +6,7 @@ import { chiptune, characterName, spriteData, registerCustomSprites, isMissionAv
 import { SEED_MISSIONS, MAPS, getLocation } from './mundos.js'
 import { FORMS } from './personajes.js'
 import { MINIGAMES } from './minijuegos.js'
-import { GlobeView, LocationView, SettingsView, AdminView } from './pantallas.js'
+import { GlobeView, LocationView, SettingsView, AdminView, LibroView, Portrait } from './pantallas.js'
 import { i18n, t, tx, LANGS } from './idiomas.js'
 
 // ============================================================ FIREBASE
@@ -194,7 +194,8 @@ const freshProgress = () => ({
   completed: [],
   active: null, // { missionId, step }
   zeni: 0,
-  inventory: []
+  inventory: [],
+  story: {} // Modo Historia: { libro1: { done: [capítulos], at: { c1: página } } }
 })
 
 export const game = reactive({
@@ -321,6 +322,8 @@ export const game = reactive({
     if (!b) return
     this.battle = null
     chiptune.play(musicAfter)
+    // combates del Modo Historia: el libro decide qué pasa después
+    if (b.onEnd) { b.onEnd(won); return }
     this.say(won ? b.step.win : b.step.lose, () => { if (won) this.advance() })
   },
   advance () {
@@ -362,6 +365,7 @@ function parseHash () {
   if (a === 'lugar' && b) { route.name = 'location'; route.params.id = b } else if (a === 'ajustes') route.name = 'settings'
   else if (a === 'admin') route.name = 'admin'
   else if (a === 'personajes') route.name = 'characters'
+  else if (a === 'libro') { route.name = 'book'; route.params.chapter = b || null }
   else route.name = 'globe'
 }
 window.addEventListener('hashchange', parseHash)
@@ -398,7 +402,7 @@ export function bubbleKind (line) {
 }
 
 const DialogBox = {
-  components: { Portrait: null },
+  components: { Portrait },
   template: `
     <div v-if="game.dialog" class="dialog-wrap" @click="onTap">
       <div class="comic-line" :class="kind" :key="game.dialog.index + ':' + (line?.who || '')">
@@ -449,38 +453,6 @@ const DialogBox = {
 // ============================================================ COMBATES
 // Retrato pixel-art de un luchador (o un emoji si el rival no es un personaje)
 const EMOJI_FOR = { turtle: '🐢', fishspot: '🐟', crate: '💊', jar: '🏺', ball: '🟠', bean: '🫘' }
-const Portrait = {
-  props: { id: String, emoji: String, flip: Boolean, bust: Boolean },
-  template: `<div class="portrait" :class="{ flip, bust }"><canvas v-if="!emoji" ref="cv" /><span v-else class="emoji">{{ emoji }}</span></div>`,
-  setup (props) {
-    const cv = ref(null)
-    function draw () {
-      const sp = spriteData(props.id)
-      if (!cv.value || !sp) return
-      const g = sp.grid
-      const w = Math.max(...g.map(r => r.length))
-      // busto: cabeza y hombros (la parte de arriba del sprite, con píxeles)
-      let top = 0
-      while (top < g.length - 1 && !/[^.]/.test(g[top])) top++
-      const rows = props.bust ? Math.min(g.length - top, Math.max(12, Math.round(w * 0.95))) : g.length
-      const y0 = props.bust ? top : 0
-      cv.value.width = w; cv.value.height = rows
-      const ctx = cv.value.getContext('2d')
-      ctx.clearRect(0, 0, w, rows)
-      for (let y = 0; y < rows; y++) {
-        const row = g[y0 + y] || ''
-        for (let x = 0; x < row.length; x++) {
-          const c = sp.palette?.[row[x]]
-          if (c) { ctx.fillStyle = c; ctx.fillRect(x, y, 1, 1) }
-        }
-      }
-    }
-    onMounted(draw)
-    watch(() => props.id, () => nextTick(draw))
-    return { cv }
-  }
-}
-DialogBox.components.Portrait = Portrait
 
 const BattleHost = {
   components: { Portrait },
@@ -510,27 +482,27 @@ const BattleHost = {
     </div>`,
   setup () {
     const info = computed(() => MINIGAMES[game.battle?.step.game])
-    const heroSprite = computed(() => game.spriteOf())
+    const heroSprite = computed(() => game.battle?.hero || game.spriteOf())
     const hero = computed(() => characterName(heroSprite.value))
     const enemySprite = computed(() => game.battle?.enemy.sprite)
-    const enemyEmoji = computed(() => game.battle?.enemy.sprite ? null : (EMOJI_FOR[game.battle?.enemy.kind] || '❓'))
+    const enemyEmoji = computed(() => game.battle?.enemy.sprite ? null : (game.battle?.enemy.emoji || EMOJI_FOR[game.battle?.enemy.kind] || '❓'))
     const hurt = ref(null)
     const pop = ref(null)
-    let t
+    let hitTimer
     function onHit (who) {
       hurt.value = who
       pop.value = { k: Date.now(), side: who, text: t(who === 'enemy' ? ['¡PAM!', '¡ZAS!', '¡BIEN!', '¡BOOM!'][Math.floor(Math.random() * 4)] : '¡AUCH!') }
-      clearTimeout(t)
-      t = setTimeout(() => { hurt.value = null; pop.value = null }, 650)
+      clearTimeout(hitTimer)
+      hitTimer = setTimeout(() => { hurt.value = null; pop.value = null }, 650)
     }
-    const end = won => game.finishBattle(won, MAPS[route.params.id]?.music || 'globo')
+    const end = won => game.finishBattle(won, game.battle?.music || MAPS[route.params.id]?.music || 'globo')
     return { game, info, hero, heroSprite, enemySprite, enemyEmoji, hurt, pop, onHit, end }
   }
 }
 
 // ============================================================ APP
 const App = {
-  components: { GlobeView, LocationView, SettingsView, AdminView, DialogBox, BattleHost },
+  components: { GlobeView, LocationView, SettingsView, AdminView, LibroView, DialogBox, BattleHost },
   template: `
     <div v-if="!started" class="title-screen" @click="start">
       <div class="logo">
@@ -539,7 +511,11 @@ const App = {
         <h1 v-else>DRAGON<br><b>BALL Z</b></h1>
         <p class="subtitle">{{ t('Las bolas de dragón') }}</p>
       </div>
-      <p class="blink">{{ loading ? t('CARGANDO...') : t('TOCA PARA EMPEZAR') }}</p>
+      <p v-if="loading" class="blink">{{ t('CARGANDO...') }}</p>
+      <div v-else class="modes" @click.stop>
+        <button class="btn primary big" @click="start('/libro')">📖 {{ t('Modo Historia') }}</button>
+        <button class="btn big" @click="start('/')">🌍 {{ t('Mundo abierto') }}</button>
+      </div>
       <div class="lang-pick" @click.stop>
         <button v-for="(name, code) in LANGS" :key="code" class="btn small" :class="{ primary: settings.lang === code }"
           @click="settings.update({ lang: code })">{{ name }}</button>
@@ -550,6 +526,7 @@ const App = {
       <GlobeView v-if="route.name === 'globe'" :key="route.path" />
       <LocationView v-else-if="route.name === 'location'" :key="route.path" :id="route.params.id" />
       <SettingsView v-else-if="route.name === 'settings'" />
+      <LibroView v-else-if="route.name === 'book'" :key="route.path" :chapter-id="route.params.chapter" />
       <AdminView v-else-if="route.name === 'admin' || route.name === 'characters'" :key="route.name"
         :initial-tab="route.name === 'characters' ? 'chars' : 'missions'" />
       <BattleHost />
@@ -568,13 +545,14 @@ const App = {
       if (route.name === 'admin' || route.name === 'characters') started.value = true
     })
 
-    function start () {
+    function start (to) {
       if (loading.value) return
+      if (typeof to === 'string') go(to)
       // el audio del navegador solo arranca tras un gesto del usuario
       chiptune.setVolume(settings.music)
       chiptune.resume()
       started.value = true
-      if (!game.progress.completed.length && !game.progress.active && route.name === 'globe') {
+      if (!game.progress.completed.length && !game.progress.active && route.name === 'globe' && to !== '/libro') {
         game.say([
           { who: 'Narrador', text: 'Hace mucho tiempo, siete esferas mágicas fueron repartidas por el mundo...' },
           { who: 'Narrador', text: 'Quien las reúna podrá invocar al dragón Shenlong y pedirle un deseo.' },
