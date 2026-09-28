@@ -15,7 +15,8 @@ import {
 import { WORLDS, getWorld, getLocation, MAPS, TILES, TRACKS } from './mundos.js'
 import { CHARACTERS, CHARACTER_GROUPS, PALETTE, buildSprite, SPEC_OPTIONS, EXTRA_LABELS, COLOR_LABELS, DEFAULTS } from './personajes.js'
 import { MINIGAMES } from './minijuegos.js'
-import { game, settings, missions, sprites, go, fb, firebaseEnabled } from './app.js'
+import { game, settings, missions, sprites, go, fb, firebaseEnabled, COMIC_FONTS } from './app.js'
+import { t, tx, LANGS } from './idiomas.js'
 
 
 // ============================================================ BOLA DEL MUNDO
@@ -28,52 +29,53 @@ export const GlobeView = {
         <div class="worlds">
           <button v-for="w in WORLDS" :key="w.id" class="chip"
             :class="{ on: w.id === viewWorld.id, locked: w.locked }" @click="switchWorld(w.id)">
-            {{ w.locked ? '🔒 ' : '' }}{{ w.name }}
+            {{ w.locked ? '🔒 ' : '' }}{{ t(w.name) }}
           </button>
         </div>
         <div class="stats">
           <span>💰 {{ game.progress.zeni }}</span>
           <span>🟠 {{ balls }}</span>
-          <a href="#/ajustes" class="icon-btn" aria-label="Ajustes">⚙</a>
+          <a href="#/libro" class="icon-btn" :aria-label="t('Modo Historia')">📖</a>
+          <a href="#/ajustes" class="icon-btn" :aria-label="t('Ajustes')">⚙</a>
         </div>
       </header>
 
       <div class="world-title">
-        <b>{{ viewWorld.name }}</b>
-        <small>{{ viewWorld.saga }} · {{ viewWorld.timeline }}</small>
+        <b>{{ t(viewWorld.name) }}</b>
+        <small>{{ t(viewWorld.saga) }} · {{ t(viewWorld.timeline) }}</small>
       </div>
 
       <transition name="slide">
         <section v-if="selected" class="panel card">
           <div class="panel-head">
-            <h2>{{ selected.name }}</h2>
+            <h2>{{ t(selected.name) }}</h2>
             <button class="icon-btn" @click="selected = null">✕</button>
           </div>
-          <p>{{ selected.desc }}</p>
+          <p>{{ t(selected.desc) }}</p>
 
           <template v-if="viewWorld.locked">
-            <p class="muted">🔒 Mundo bloqueado — llegará en un pack de misiones (DLC).</p>
+            <p class="muted">{{ t('🔒 Mundo bloqueado — llegará en un pack de misiones (DLC).') }}</p>
           </template>
           <template v-else-if="!unlocked(selected)">
-            <p class="muted">🔒 Completa antes: «{{ requiredTitle(selected) }}»</p>
+            <p class="muted">{{ t('🔒 Completa antes: «{t}»', { t: tx(requiredTitle(selected)) }) }}</p>
           </template>
           <template v-else>
             <ul class="missions" v-if="game.availableAt(selected.id).length">
-              <li v-for="m in game.availableAt(selected.id)" :key="m.id">⭐ {{ m.title }}</li>
+              <li v-for="m in game.availableAt(selected.id)" :key="m.id">⭐ {{ tx(m.title) }}</li>
             </ul>
-            <p v-else class="muted">No hay misiones nuevas aquí... de momento.</p>
+            <p v-else class="muted">{{ t('No hay misiones nuevas aquí... de momento.') }}</p>
 
             <div class="actions">
-              <button v-if="isHere(selected)" class="btn primary" @click="enter(selected)">Entrar ▶</button>
+              <button v-if="isHere(selected)" class="btn primary" @click="enter(selected)">{{ t('Entrar ▶') }}</button>
               <template v-else-if="settings.moveMode === 'free'">
-                <button class="btn primary" :disabled="traveling" @click="flyTo(selected)">☁ Volar en la Nube Kinton</button>
+                <button class="btn primary" :disabled="traveling" @click="flyTo(selected)">{{ t('☁ Volar en la Nube Kinton') }}</button>
               </template>
               <template v-else>
                 <button class="btn primary" :disabled="traveling" @click="rollAndMove(selected)">
-                  🎲 Tirar dado
+                  {{ t('🎲 Tirar dado') }}
                 </button>
                 <small v-if="transit && transit.to === selected.id" class="muted">
-                  Faltan {{ transit.points.length - transit.index }} casillas
+                  {{ t('Faltan {n} casillas', { n: transit.points.length - transit.index }) }}
                 </small>
               </template>
             </div>
@@ -84,14 +86,14 @@ export const GlobeView = {
       <div v-if="die" class="die-overlay"><div class="die" :class="{ rolling: die.rolling }">{{ die.value }}</div></div>
 
       <div class="zoom-ctrl">
-        <button class="btn small" aria-label="Acercar" @click="zoomBy(1.5)">＋</button>
-        <button class="btn small" aria-label="Alejar" @click="zoomBy(1 / 1.5)">－</button>
-        <button class="btn small" aria-label="Centrar en el personaje" @click="recenter">◎</button>
+        <button class="btn small" :aria-label="t('Acercar')" @click="zoomBy(1.5)">＋</button>
+        <button class="btn small" :aria-label="t('Alejar')" @click="zoomBy(1 / 1.5)">－</button>
+        <button class="btn small" :aria-label="t('Centrar en el personaje')" @click="recenter">◎</button>
       </div>
 
       <footer class="hud-bottom">
-        <span class="muted">Arrastra · Pellizca para acercar · Toca un lugar</span>
-        <span class="mode">Modo: {{ settings.moveMode === 'dice' ? '🎲 Dados' : '🕊 Libre' }}</span>
+        <span class="muted">{{ t('Arrastra · Pellizca para acercar · Toca un lugar') }}</span>
+        <span class="mode">{{ t('Modo: {m}', { m: t(settings.moveMode === 'dice' ? '🎲 Dados' : '🕊 Libre') }) }}</span>
       </footer>
     </div>`,
   setup () {
@@ -251,7 +253,7 @@ export const GlobeView = {
       waypointGroup.clear()
       game.travelTo(viewWorld.value.id, loc.id)
       chiptune.sfx('coin')
-      game.flash(`Has llegado a ${loc.name}`)
+      game.flash(t('Has llegado a {p}', { p: t(loc.name) }))
     }
 
     function drawWaypoints () {
@@ -287,7 +289,7 @@ export const GlobeView = {
         if ((end - 1) % 3 === 2) {
           game.progress.zeni += 10
           game.save()
-          game.say([{ who: 'Evento', text: ENCOUNTERS[Math.floor(Math.random() * ENCOUNTERS.length)] }])
+          game.say([{ who: 'Evento', sprite: null, text: ENCOUNTERS[Math.floor(Math.random() * ENCOUNTERS.length)] }])
         }
       })
     }
@@ -429,38 +431,38 @@ export const LocationView = {
       <div ref="stage" class="stage" />
 
       <header class="hud-top">
-        <button class="btn small" @click="back">◀ Globo</button>
+        <button class="btn small" @click="back">{{ t('◀ Globo') }}</button>
         <div class="place">
-          <b>{{ location?.name }}</b>
+          <b>{{ t(location?.name) }}</b>
         </div>
         <div class="stats">💰 {{ game.progress.zeni }}</div>
       </header>
 
       <section v-if="game.activeMission && game.activeMission.locationId === id" class="tracker card">
-        <b>⭐ {{ game.activeMission.title }}</b>
-        <span>{{ game.currentStep?.hint }}</span>
+        <b>⭐ {{ tx(game.activeMission.title) }}</b>
+        <span>{{ tx(game.currentStep?.hint) }}</span>
       </section>
 
       <section v-else-if="available.length" class="board card">
-        <b>Misiones aquí</b>
+        <b>{{ t('Misiones aquí') }}</b>
         <div v-for="m in available" :key="m.id" class="mission">
           <div>
-            <div class="m-title">{{ m.title }}</div>
-            <small>{{ m.summary }}</small>
+            <div class="m-title">{{ tx(m.title) }}</div>
+            <small>{{ tx(m.summary) }}</small>
           </div>
-          <button class="btn primary small" @click="game.startMission(m.id)">Empezar</button>
+          <button class="btn primary small" @click="game.startMission(m.id)">{{ t('Empezar') }}</button>
         </div>
       </section>
 
       <section v-else-if="game.activeMission" class="board card done">
-        <b>⭐ Misión en curso: {{ game.activeMission.title }}</b>
-        <span>Continúa en <b>{{ activeLocationName }}</b>. {{ game.currentStep?.hint }}</span>
+        <b>{{ t('⭐ Misión en curso: {t}', { t: tx(game.activeMission.title) }) }}</b>
+        <span>{{ t('Continúa en') }} <b>{{ t(activeLocationName) }}</b>. {{ tx(game.currentStep?.hint) }}</span>
       </section>
 
       <section v-else class="board card done">
-        <b>✅ ¡Lo has completado todo aquí!</b>
-        <span v-if="nextHint">Siguiente aventura: «{{ nextHint.mission.title }}» en <b>{{ nextHint.location.name }}</b>. Vuelve al globo para viajar.</span>
-        <span v-else>Pronto llegarán nuevas misiones (DLC). ¡Habla con todos para descubrir secretos!</span>
+        <b>{{ t('✅ ¡Lo has completado todo aquí!') }}</b>
+        <span v-if="nextHint">{{ t('Siguiente aventura: «{m}» en {l}. Vuelve al globo para viajar.', { m: tx(nextHint.mission.title), l: t(nextHint.location.name) }) }}</span>
+        <span v-else>{{ t('Pronto llegarán nuevas misiones (DLC). ¡Habla con todos para descubrir secretos!') }}</span>
       </section>
 
       <footer class="hud-bottom">
@@ -468,10 +470,10 @@ export const LocationView = {
           <button v-for="c in game.progress.team" :key="c" class="chip" :class="{ on: c === game.progress.character }"
             @click="switchCharacter(c)">{{ characterName(c) }}</button>
         </div>
-        <button v-if="game.canTransform()" class="btn primary small transform" @click="transform">⚡ Transformarse</button>
+        <button v-if="game.canTransform()" class="btn primary small transform" @click="transform">{{ t('⚡ Transformarse') }}</button>
       <div v-if="settings.moveMode === 'dice'" class="dice-box">
-          <span>Pasos: {{ moves }}</span>
-          <button class="btn primary small" :disabled="moves > 0 || rolling" @click="roll">🎲 {{ rolling ? '...' : 'Tirar' }}</button>
+          <span>{{ t('Pasos: {n}', { n: moves }) }}</span>
+          <button class="btn primary small" :disabled="moves > 0 || rolling" @click="roll">🎲 {{ rolling ? '...' : t('Tirar') }}</button>
         </div>
       </footer>
     </div>`,
@@ -643,7 +645,7 @@ export const LocationView = {
           clearInterval(iv)
           rolling.value = false
           chiptune.sfx('dice')
-          game.flash(`¡Has sacado un ${moves.value}!`)
+          game.flash(t('¡Has sacado un {n}!', { n: moves.value }))
           showReachable()
         }
       }, 70)
@@ -664,13 +666,13 @@ export const LocationView = {
           .map(p => ({ p, path: findPath(W, H, blocked, pos, p) }))
           .filter(o => o.path)
           .sort((a, b) => a.path.length - b.path.length)
-        if (!options.length) { game.flash('No puedo llegar hasta ahí'); return }
+        if (!options.length) { game.flash(t('No puedo llegar hasta ahí')); return }
         dest = options[0].p
       }
       const path = findPath(W, H, blocked, pos, dest)
-      if (!path) { game.flash('No puedo llegar hasta ahí'); return }
+      if (!path) { game.flash(t('No puedo llegar hasta ahí')); return }
       if (settings.moveMode === 'dice') {
-        if (moves.value <= 0) { game.flash('Tira el dado para moverte 🎲'); return }
+        if (moves.value <= 0) { game.flash(t('Tira el dado para moverte 🎲')); return }
         if (path.length > moves.value) { game.flash(`Necesitas ${path.length} pasos (tienes ${moves.value})`); return }
         moves.value -= path.length
       }
@@ -829,55 +831,91 @@ export const SettingsView = {
   template: `
     <div class="page settings">
       <header class="page-head">
-        <a href="#/" class="btn small">◀ Volver</a>
-        <h1>Ajustes</h1>
+        <a href="#/" class="btn small">{{ t('◀ Volver') }}</a>
+        <h1>{{ t('Ajustes') }}</h1>
       </header>
 
       <section class="card">
-        <h2>Modo de avance</h2>
+        <h2>{{ t('Idioma') }}</h2>
+        <div class="lang-pick">
+          <button v-for="(name, code) in LANGS" :key="code" class="btn" :class="{ primary: settings.lang === code }"
+            @click="settings.update({ lang: code })">{{ name }}</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>{{ t('Diálogos (estilo cómic)') }}</h2>
+        <label class="row">{{ t('Tipo de letra') }}
+          <select :value="settings.comicFont" @change="settings.update({ comicFont: $event.target.value })">
+            <option v-for="(f, id) in COMIC_FONTS" :key="id" :value="id">{{ f.label }}</option>
+          </select>
+        </label>
+        <label class="row">{{ t('Tamaño del texto') }}
+          <select :value="settings.textSize" @change="settings.update({ textSize: Number($event.target.value) })">
+            <option :value="0.85">{{ t('Pequeño') }}</option>
+            <option :value="1">{{ t('Normal') }}</option>
+            <option :value="1.2">{{ t('Grande') }}</option>
+            <option :value="1.45">{{ t('Enorme') }}</option>
+          </select>
+        </label>
+        <label class="row">{{ t('Velocidad del texto') }}
+          <select :value="settings.textSpeed" @change="settings.update({ textSpeed: Number($event.target.value) })">
+            <option :value="45">{{ t('Lenta') }}</option>
+            <option :value="28">{{ t('Normal') }}</option>
+            <option :value="12">{{ t('Rápida') }}</option>
+            <option :value="0">{{ t('Instantánea') }}</option>
+          </select>
+        </label>
+        <div class="comic-line talk preview">
+          <div class="bubble comic-text talk"><b class="who">Goku</b><p>{{ t('¡Así se verán los bocadillos!') }} Kamehameha!</p></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>{{ t('Modo de avance') }}</h2>
         <label class="opt">
           <input type="radio" value="free" :checked="settings.moveMode === 'free'" @change="settings.update({ moveMode: 'free' })" />
-          <span><b>🕊 Avance libre</b><small>Toca donde quieras ir y el personaje camina (o vuela) hasta allí.</small></span>
+          <span><b>{{ t('🕊 Avance libre') }}</b><small>{{ t('Toca donde quieras ir y el personaje camina (o vuela) hasta allí.') }}</small></span>
         </label>
         <label class="opt">
           <input type="radio" value="dice" :checked="settings.moveMode === 'dice'" @change="settings.update({ moveMode: 'dice' })" />
-          <span><b>🎲 Avance con dados</b><small>Tira el dado y avanza esas casillas, en el globo y dentro de cada lugar. Hay casillas-evento por el camino.</small></span>
+          <span><b>{{ t('🎲 Avance con dados') }}</b><small>{{ t('Tira el dado y avanza esas casillas, en el globo y dentro de cada lugar. Hay casillas-evento por el camino.') }}</small></span>
         </label>
       </section>
 
       <section class="card">
-        <h2>Imagen y sonido</h2>
-        <label class="row">Estilo gráfico
+        <h2>{{ t('Gráficos y sonido') }}</h2>
+        <label class="row">{{ t('Estilo gráfico') }}
           <select :value="settings.visualStyle" @change="settings.update({ visualStyle: $event.target.value })">
-            <option v-for="(st, id) in VISUAL_STYLES" :key="id" :value="id">{{ st.name }}</option>
+            <option v-for="(st, id) in VISUAL_STYLES" :key="id" :value="id">{{ t(st.name) }}</option>
           </select>
         </label>
-        <label class="row">Resolución
+        <label class="row">{{ t('Resolución') }}
           <select :value="settings.pixelSize" @change="settings.update({ pixelSize: Number($event.target.value) })">
-            <option :value="1">HD (nítido)</option>
-            <option :value="1.5">Alta · retro sutil</option>
-            <option :value="2">Media · retro suave</option>
-            <option :value="3">Baja · 8 bits clásico</option>
+            <option :value="1">{{ t('Máxima · nítido') }}</option>
+            <option :value="1.5">{{ t('Alta · retro sutil') }}</option>
+            <option :value="2">{{ t('Media · retro suave') }}</option>
+            <option :value="3">{{ t('Baja · 8 bits clásico') }}</option>
           </select>
         </label>
-        <label class="row">Música
+        <label class="row">{{ t('Música') }}
           <input type="range" min="0" max="1" step="0.1" :value="settings.music" @input="settings.update({ music: Number($event.target.value) })" />
         </label>
       </section>
 
       <section class="card">
-        <h2>Partida</h2>
-        <p class="muted">Guardado {{ firebaseEnabled ? 'en la nube (Firebase)' : 'en este dispositivo' }}.</p>
-        <button class="btn danger" @click="reset">Borrar progreso</button>
-        <a href="#/personajes" class="btn">🎨 Personajes</a>
-        <a href="#/admin" class="btn">🛠 Panel Admin</a>
+        <h2>{{ t('Partida') }}</h2>
+        <p class="muted">{{ t('Guardado {w}.', { w: t(firebaseEnabled ? 'en la nube (Firebase)' : 'en este dispositivo') }) }}</p>
+        <button class="btn danger" @click="reset">{{ t('Borrar progreso') }}</button>
+        <a href="#/personajes" class="btn">{{ t('🎨 Personajes (editar sprites)') }}</a>
+        <a href="#/admin" class="btn">{{ t('🛠 Admin (misiones DLC)') }}</a>
       </section>
     </div>`,
   setup () {
     function reset () {
-      if (confirm('¿Seguro? Se perderá todo el progreso.')) game.reset()
+      if (confirm(t('¿Seguro? Se perderá todo el progreso.'))) game.reset()
     }
-    return { settings, firebaseEnabled, reset, VISUAL_STYLES }
+    return { settings, firebaseEnabled, reset, VISUAL_STYLES, LANGS, COMIC_FONTS }
   }
 }
 

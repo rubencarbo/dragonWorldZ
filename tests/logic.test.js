@@ -141,3 +141,30 @@ describe('datos', () => {
     for (const t of Object.values(TRACKS)) for (const e of parsePattern(t.lead)) if (e) expect(e.freq, e.token).toBeTruthy()
   })
 })
+
+// ---------- idiomas ----------
+describe('català', () => {
+  it('todos los textos de mundos, mapas y misiones tienen traducción', async () => {
+    const { t, i18n, RHYMES_CA, QUIZ_CA } = await import('../idiomas.js')
+    const { SEED_MISSIONS, WORLDS, MAPS } = await import('../mundos.js')
+    const KEYS = new Set(['who', 'text', 'title', 'summary', 'hint', 'name', 'desc', 'saga', 'timeline'])
+    const missing = []
+    i18n.lang = 'ca'
+    const walk = (o, k) => {
+      if (typeof o === 'string') {
+        if (KEYS.has(k) && /[a-záéíóúñ]{2}/i.test(o) && t(o) === o && /[áéíóúñ¡¿]|\b(el|la|los|las|de|y|que|con)\b/i.test(o)) missing.push(o)
+      } else if (Array.isArray(o)) o.forEach(x => walk(x, k))
+      else if (o && typeof o === 'object') for (const [kk, v] of Object.entries(o)) walk(v, kk)
+    }
+    walk(SEED_MISSIONS); walk(WORLDS); walk(MAPS)
+    i18n.lang = 'es'
+    expect(missing).toEqual([])
+    expect(RHYMES_CA.length).toBeGreaterThanOrEqual(12)
+    expect(QUIZ_CA.examen.length).toBeGreaterThanOrEqual(5)
+    expect(QUIZ_CA.karin.length).toBeGreaterThanOrEqual(5)
+  })
+  it('se conserva «Kamehameha» (nunca «ona vital»)', async () => {
+    const src = (await import('fs')).readFileSync(new URL('../idiomas.js', import.meta.url), 'utf8')
+    expect(src.replace(/\/\/.*$/gm, '')).not.toMatch(/ona vital/i)
+  })
+})

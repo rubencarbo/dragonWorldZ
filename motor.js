@@ -6,6 +6,7 @@
 //   · lógica pura de misiones y pathfinding
 import * as THREE from 'three'
 import { CHARACTERS, PALETTE } from './personajes.js'
+import { i18n, t, NAMES_CA } from './idiomas.js'
 import { TRACKS } from './mundos.js'
 
 // ============================================================ RENDERER RETRO
@@ -512,7 +513,9 @@ export function spriteData (id) {
 }
 
 export function characterName (id) {
-  return customSprites[id]?.name || CHARACTERS[id]?.name || id
+  if (customSprites[id]?.name) return t(customSprites[id].name)
+  if (i18n.lang === 'ca' && NAMES_CA[id]) return NAMES_CA[id]
+  return t(CHARACTERS[id]?.name || id)
 }
 
 export function kintonModel () {

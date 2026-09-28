@@ -1,12 +1,13 @@
 // APP — arranque del juego: configuración de Firebase, guardado de datos,
 // estado global (ajustes, misiones, sprites, partida), navegación entre
 // pantallas y componentes comunes (diálogos y combates).
-import { createApp, reactive, computed, ref, watch, onMounted } from 'vue'
+import { createApp, reactive, computed, ref, watch, onMounted, nextTick } from 'vue'
 import { chiptune, characterName, spriteData, registerCustomSprites, isMissionAvailable, resolveInteraction, visibleSpawns } from './motor.js'
 import { SEED_MISSIONS, MAPS, getLocation } from './mundos.js'
 import { FORMS } from './personajes.js'
 import { MINIGAMES } from './minijuegos.js'
 import { GlobeView, LocationView, SettingsView, AdminView } from './pantallas.js'
+import { i18n, t, tx, LANGS } from './idiomas.js'
 
 // ============================================================ FIREBASE
 // Rellena con la config de tu proyecto (consola de Firebase → Configuración
@@ -111,14 +112,36 @@ export const settings = reactive({
   pixelSize: 1, // píxeles de pantalla por píxel de juego (ver createRetroRenderer)
   visualStyle: 'bricks', // estilo gráfico del mundo: bricks | toon | pixel
   music: 0.5,
+  lang: (navigator.language || '').startsWith('ca') ? 'ca' : 'es', // es | ca
+  comicFont: 'bangers', // tipo de letra de los bocadillos (ver COMIC_FONTS)
+  textSize: 1, // escala del texto de los diálogos
+  textSpeed: 28, // ms por letra (0 = instantáneo)
   ...LS.get('settings', {}),
   update (patch) {
     Object.assign(this, patch)
-    chiptune.setVolume(this.music)
-    const { update, ...data } = this
-    LS.set('settings', data)
+    applySettings()
   }
 })
+
+// tipos de letra de cómic para los diálogos (se cargan desde Google Fonts en index.html)
+export const COMIC_FONTS = {
+  bangers: { label: 'Bangers (cómic americano)', css: "'Bangers', 'Comic Neue', sans-serif", scale: 1.15 },
+  comic: { label: 'Comic Neue (tebeo clásico)', css: "'Comic Neue', 'Comic Sans MS', sans-serif", scale: 1 },
+  patrick: { label: 'Patrick Hand (rotulado a mano)', css: "'Patrick Hand', 'Comic Neue', sans-serif", scale: 1.1 },
+  pixel: { label: 'Press Start 2P (8 bits)', css: "'Press Start 2P', monospace", scale: 0.62 }
+}
+function applySettings () {
+  chiptune.setVolume(settings.music)
+  i18n.lang = settings.lang
+  const root = document.documentElement
+  root.lang = settings.lang
+  const f = COMIC_FONTS[settings.comicFont] || COMIC_FONTS.bangers
+  root.style.setProperty('--comic-font', f.css)
+  root.style.setProperty('--comic-size', (16 * f.scale * settings.textSize).toFixed(1) + 'px')
+  const { update, ...data } = settings
+  LS.set('settings', data)
+}
+applySettings()
 
 // ============================================================ SPRITES PERSONALIZADOS
 export const sprites = reactive({
@@ -195,7 +218,7 @@ export const game = reactive({
     if (!m || m.locationId !== locationId) return []
     return visibleSpawns(m, this.progress.active.step)
   },
-  itemName (id) { return ITEM_NAMES[id] || id },
+  itemName (id) { return t(ITEM_NAMES[id] || id) },
   // sprite que se dibuja para un personaje (según su transformación actual)
   spriteOf (id = this.progress.character) {
     // algunas misiones se juegan con otro personaje (p. ej. Goku niño en un recuerdo)
@@ -217,7 +240,7 @@ export const game = reactive({
     this.progress.forms = { ...(this.progress.forms || {}), [id]: next }
     this.save()
     chiptune.sfx(next === id ? 'bad' : 'ok')
-    this.flash(next === id ? 'Vuelves a tu forma normal' : `¡${characterName(next)}!`)
+    this.flash(next === id ? t('Vuelves a tu forma normal') : `¡${characterName(next)}!`)
   },
 
   async load () {
@@ -262,18 +285,18 @@ export const game = reactive({
     const m = missions.byId(id)
     if (!m) return
     if (m.locationId !== this.progress.locationId) {
-      this.flash(`Esta misión empieza en ${getLocation(m.locationId)?.name || m.locationId}`)
+      this.flash(t('Esta misión empieza en {p}', { p: t(getLocation(m.locationId)?.name || m.locationId) }))
       return
     }
     this.progress.active = { missionId: id, step: 0 }
     this.save()
-    this.say(m.intro, () => this.flash(m.steps[0].hint || ''))
+    this.say(m.intro, () => this.flash(tx(m.steps[0].hint || '')))
   },
   interact (prop) {
     const m = this.activeMission
     const res = resolveInteraction(m, this.progress.active?.step, prop.id)
     if (res.kind === 'flavor') {
-      this.say(prop.lines || [{ who: prop.name, text: '...' }])
+      this.say(prop.lines?.map(l => ({ sprite: prop.sprite && prop.kind === 'npc' ? prop.sprite : undefined, ...l })) || [{ who: prop.name, text: '...' }])
       return
     }
     const step = res.step
@@ -288,7 +311,7 @@ export const game = reactive({
       if (res.kind === 'collect' && step.item) {
         this.progress.inventory.push(step.item)
         chiptune.sfx('coin')
-        this.flash(`¡Conseguido: ${this.itemName(step.item)}!`)
+        this.flash(t('¡Conseguido: {i}!', { i: this.itemName(step.item) }))
       }
       this.advance()
     })
@@ -307,7 +330,7 @@ export const game = reactive({
     if (next < m.steps.length) {
       this.progress.active.step = next
       this.save()
-      if (m.steps[next].hint) this.flash(m.steps[next].hint)
+      if (m.steps[next].hint) this.flash(tx(m.steps[next].hint))
       return
     }
     this.completeMission(m)
@@ -321,8 +344,8 @@ export const game = reactive({
     for (const c of r.characters || []) if (!this.progress.team.includes(c)) this.progress.team.push(c)
     this.save()
     chiptune.play('victoria')
-    const lines = [{ who: '¡MISIÓN COMPLETADA!', text: `${m.title} · +${r.zeni || 0} zenis` }]
-    if (r.characters?.length) lines.push({ who: 'Equipo', text: `Nuevo personaje disponible: ${r.characters.join(', ')}` })
+    const lines = [{ who: '¡MISIÓN COMPLETADA!', sprite: null, kind: 'shout', text: t('{title} · +{z} zenis', { title: tx(m.title), z: r.zeni || 0 }) }]
+    if (r.characters?.length) lines.push({ who: 'Equipo', sprite: null, text: t('Nuevo personaje disponible: {c}', { c: r.characters.map(characterName).join(', ') }) })
     this.say(lines)
   }
 })
@@ -346,39 +369,80 @@ parseHash()
 
 export function go (path) { location.hash = path }
 
-// ============================================================ DIÁLOGOS
+// ============================================================ DIÁLOGOS (bocadillos de cómic)
+// Quién habla → sprite del retrato. Una línea puede traer `sprite` explícito.
+const WHO_SPRITE = {
+  Goku: 'goku', Gohan: 'gohan', 'Chichí': 'chichi', Krilin: 'krilin', Roshi: 'roshi', 'Maestro Roshi': 'roshi',
+  Umigame: 'umigame', Raditz: 'raditz', Piccolo: 'piccolo', Bulma: 'bulma', Oolong: 'oolong', Karin: 'karin',
+  Dinosaurio: 'dino', Yamcha: 'yamcha', Puar: 'puar', Vegeta: 'vegeta'
+}
+export function speakerSprite (line) {
+  if (!line) return null
+  if (line.sprite !== undefined) return line.sprite
+  const id = WHO_SPRITE[line.who]
+  // en los recuerdos (Goku niño...) el retrato es el del personaje que se juega
+  const playAs = game.activeMission?.playAs
+  if (id && playAs && playAs.startsWith(id)) return playAs
+  if (id && id === game.progress.character) return game.spriteOf(id)
+  return id && spriteData(id) ? id : null
+}
+// tipo de bocadillo según el texto: grito (MAYÚSCULAS), pensamiento/acción (entre paréntesis)
+export function bubbleKind (line) {
+  if (!line) return 'talk'
+  if (line.kind) return line.kind
+  if (!line.who || /^(Narrador|Narradora)$/.test(line.who)) return 'caption'
+  const txt = line.text || ''
+  if (/^\(.*\)$/.test(txt.trim())) return 'think'
+  if (/[A-ZÁÉÍÓÚÑ]{4,}/.test(txt) && txt.includes('!')) return 'shout'
+  return 'talk'
+}
+
 const DialogBox = {
+  components: { Portrait: null },
   template: `
     <div v-if="game.dialog" class="dialog-wrap" @click="onTap">
-      <div class="dialog card">
-        <b class="who">{{ line?.who }}</b>
-        <p>{{ shown }}<span class="caret">▼</span></p>
+      <div class="comic-line" :class="kind" :key="game.dialog.index + ':' + (line?.who || '')">
+        <div v-if="kind === 'caption'" class="caption-box comic-text">
+          <p>{{ shown }}<span class="caret">▶</span></p>
+        </div>
+        <template v-else>
+          <Portrait v-if="sprite" :key="sprite" :id="sprite" bust class="speaker" />
+          <div class="bubble comic-text" :class="kind">
+            <b class="who">{{ who }}</b>
+            <p>{{ shown }}<span class="caret">▶</span></p>
+          </div>
+        </template>
       </div>
     </div>`,
   setup () {
     const line = computed(() => game.dialog?.lines[game.dialog.index])
+    const text = computed(() => tx(line.value?.text || ''))
+    const who = computed(() => tx(line.value?.who || ''))
+    const kind = computed(() => bubbleKind(line.value))
+    const sprite = computed(() => speakerSprite(line.value))
     // efecto máquina de escribir; tocar completa el texto antes de avanzar
     const shown = ref('')
     let iv
-    watch(line, l => {
+    watch(text, l => {
       clearInterval(iv)
-      if (!l) return
       shown.value = ''
+      if (!l) return
+      if (!settings.textSpeed) { shown.value = l; return }
       let i = 0
       iv = setInterval(() => {
-        shown.value = l.text.slice(0, ++i)
-        if (i >= l.text.length) clearInterval(iv)
-      }, 22)
+        shown.value = l.slice(0, ++i)
+        if (i >= l.length) clearInterval(iv)
+      }, settings.textSpeed)
     }, { immediate: true })
     function onTap () {
-      if (shown.value.length < line.value.text.length) {
+      if (shown.value.length < text.value.length) {
         clearInterval(iv)
-        shown.value = line.value.text
+        shown.value = text.value
         return
       }
       game.nextLine()
     }
-    return { game, line, shown, onTap }
+    return { game, line, shown, onTap, who, kind, sprite }
   }
 }
 
@@ -386,25 +450,37 @@ const DialogBox = {
 // Retrato pixel-art de un luchador (o un emoji si el rival no es un personaje)
 const EMOJI_FOR = { turtle: '🐢', fishspot: '🐟', crate: '💊', jar: '🏺', ball: '🟠', bean: '🫘' }
 const Portrait = {
-  props: { id: String, emoji: String, flip: Boolean },
-  template: `<div class="portrait" :class="{ flip }"><canvas v-if="!emoji" ref="cv" /><span v-else class="emoji">{{ emoji }}</span></div>`,
+  props: { id: String, emoji: String, flip: Boolean, bust: Boolean },
+  template: `<div class="portrait" :class="{ flip, bust }"><canvas v-if="!emoji" ref="cv" /><span v-else class="emoji">{{ emoji }}</span></div>`,
   setup (props) {
     const cv = ref(null)
-    onMounted(() => {
+    function draw () {
       const sp = spriteData(props.id)
       if (!cv.value || !sp) return
       const g = sp.grid
       const w = Math.max(...g.map(r => r.length))
-      cv.value.width = w; cv.value.height = g.length
+      // busto: cabeza y hombros (la parte de arriba del sprite, con píxeles)
+      let top = 0
+      while (top < g.length - 1 && !/[^.]/.test(g[top])) top++
+      const rows = props.bust ? Math.min(g.length - top, Math.max(12, Math.round(w * 0.95))) : g.length
+      const y0 = props.bust ? top : 0
+      cv.value.width = w; cv.value.height = rows
       const ctx = cv.value.getContext('2d')
-      g.forEach((row, y) => [...row].forEach((ch, x) => {
-        const c = sp.palette?.[ch]
-        if (c) { ctx.fillStyle = c; ctx.fillRect(x, y, 1, 1) }
-      }))
-    })
+      ctx.clearRect(0, 0, w, rows)
+      for (let y = 0; y < rows; y++) {
+        const row = g[y0 + y] || ''
+        for (let x = 0; x < row.length; x++) {
+          const c = sp.palette?.[row[x]]
+          if (c) { ctx.fillStyle = c; ctx.fillRect(x, y, 1, 1) }
+        }
+      }
+    }
+    onMounted(draw)
+    watch(() => props.id, () => nextTick(draw))
     return { cv }
   }
 }
+DialogBox.components.Portrait = Portrait
 
 const BattleHost = {
   components: { Portrait },
@@ -419,17 +495,17 @@ const BattleHost = {
           <div class="vs">VS</div>
           <div class="fighter enemy" :class="{ hurt: hurt === 'enemy', strike: hurt === 'hero' }">
             <Portrait :id="enemySprite" :emoji="enemyEmoji" flip />
-            <b>{{ game.battle.enemy.name }}</b>
+            <b>{{ tx(game.battle.enemy.name) }}</b>
           </div>
           <div v-if="pop" :key="pop.k" class="pop" :class="pop.side">{{ pop.text }}</div>
         </div>
         <header>
-          <span class="gname">{{ info?.name }}</span>
-          <small>{{ info?.help }}</small>
+          <span class="gname">{{ t(info?.name) }}</span>
+          <small>{{ t(info?.help) }}</small>
         </header>
         <component :is="info.component" v-if="info" :config="game.battle.step.config || {}" :enemy="game.battle.enemy" @end="end" @hit="onHit" />
-        <p v-else>Minijuego desconocido: {{ game.battle.step.game }}</p>
-        <button class="btn small flee" @click="end(false)">Huir</button>
+        <p v-else>{{ t('Minijuego desconocido: {g}', { g: game.battle.step.game }) }}</p>
+        <button class="btn small flee" @click="end(false)">{{ t('Huir') }}</button>
       </div>
     </div>`,
   setup () {
@@ -443,7 +519,7 @@ const BattleHost = {
     let t
     function onHit (who) {
       hurt.value = who
-      pop.value = { k: Date.now(), side: who, text: who === 'enemy' ? ['¡PAM!', '¡ZAS!', '¡BIEN!', '¡BOOM!'][Math.floor(Math.random() * 4)] : '¡AUCH!' }
+      pop.value = { k: Date.now(), side: who, text: t(who === 'enemy' ? ['¡PAM!', '¡ZAS!', '¡BIEN!', '¡BOOM!'][Math.floor(Math.random() * 4)] : '¡AUCH!') }
       clearTimeout(t)
       t = setTimeout(() => { hurt.value = null; pop.value = null }, 650)
     }
@@ -459,10 +535,16 @@ const App = {
     <div v-if="!started" class="title-screen" @click="start">
       <div class="logo">
         <span class="ball">★</span>
-        <h1>DRAGON<br><b>WORLD Z</b></h1>
+        <h1 v-if="settings.lang === 'ca'">BOLA<br><b>DE DRAC Z</b></h1>
+        <h1 v-else>DRAGON<br><b>BALL Z</b></h1>
+        <p class="subtitle">{{ t('Las bolas de dragón') }}</p>
       </div>
-      <p class="blink">{{ loading ? 'CARGANDO...' : 'TOCA PARA EMPEZAR' }}</p>
-      <small>Fan game sin ánimo de lucro · prototipo</small>
+      <p class="blink">{{ loading ? t('CARGANDO...') : t('TOCA PARA EMPEZAR') }}</p>
+      <div class="lang-pick" @click.stop>
+        <button v-for="(name, code) in LANGS" :key="code" class="btn small" :class="{ primary: settings.lang === code }"
+          @click="settings.update({ lang: code })">{{ name }}</button>
+      </div>
+      <small>{{ t('Fan game sin ánimo de lucro · prototipo') }}</small>
     </div>
     <template v-else>
       <GlobeView v-if="route.name === 'globe'" :key="route.path" />
@@ -500,11 +582,15 @@ const App = {
         ])
       }
     }
-    return { started, loading, start, route, game }
+    return { started, loading, start, route, game, settings, LANGS }
   }
 }
 
-createApp(App).mount('#app')
+const app = createApp(App)
+// t() y tx() disponibles en todas las plantillas
+app.config.globalProperties.t = t
+app.config.globalProperties.tx = tx
+app.mount('#app')
 
 // acceso de depuración desde la consola: __dwz.game, __dwz.go('/admin')...
 window.__dwz = { game, settings, missions, sprites, route, go }
