@@ -672,8 +672,10 @@ export const SEED_MISSIONS = [
 export const TRACKS = {
   globo: {
     bpm: 92,
+    inst: { lead: 'flute', pad: 'strings' },
+    pad: 'A3+C4+E4 - - - - - - - F3+A3+C4 - - - - - - - G3+B3+D4 - - - - - - - E3+G#3+B3 - - - - - - - A3+C4+E4 - - - - - - - F3+A3+C4 - - - - - - - G3+B3+D4 - - - - - - - A3+C4+E4 - - - - - - -',
     lead: 'E5 - G5 - A5 - - . B5 - A5 - G5 - E5 . D5 - E5 - G5 - - - . . . . . . ' +
-          'E5 - G5 - A5 - - . C6 - B5 - A5 - G5 . A5 - - - - - - - . . . . . . . .',
+          'E5 - G5 - A5 - - . C6 - B5 - A5 - G5 . A5 - - - - - - - . . . . . . . . . .',
     bass: 'A2 - . A2 E3 - . . F2 - . F2 C3 - . . G2 - . G2 D3 - . . E2 - . E2 B2 - . . ' +
           'A2 - . A2 E3 - . . F2 - . F2 C3 - . . G2 - . G2 D3 - . . A2 - - - . . . .',
     drums: 'k . h . s . h . k . h . s . h h k . h . s . h . k k h . s . h . ' +
@@ -681,6 +683,8 @@ export const TRACKS = {
   },
   paoz: {
     bpm: 132,
+    inst: { lead: 'koto', pad: 'organ' },
+    pad: 'C4+E4+G4 - - - - - - - F3+A3+C4 - - - - - - - A3+C4+E4 - - - - - - - G3+B3+D4 - - - - - - - C4+E4+G4 - - - - - - - F3+A3+C4 - - - - - - - G3+B3+D4 - - - - - - - C4+E4+G4 - - - - - - -',
     lead: 'C5 D5 E5 G5 - E5 G5 A5 G5 - E5 - D5 - C5 . D5 E5 D5 C5 A4 - C5 - D5 - - - . . . . ' +
           'C5 D5 E5 G5 - E5 G5 A5 C6 - A5 - G5 - E5 . D5 E5 G5 E5 D5 - C5 - C5 - - - . . . .',
     bass: 'C3 . G3 . C3 . G3 . F2 . C3 . F2 . C3 . A2 . E3 . A2 . E3 . G2 . D3 . G2 . D3 . ' +
@@ -689,6 +693,8 @@ export const TRACKS = {
   },
   kame: {
     bpm: 108,
+    inst: { lead: 'epiano', pad: 'strings' },
+    pad: 'G3+B3+D4 - - - - - - - C4+E4+G4 - - - - - - - E3+G3+B3 - - - - - - - D4+F#4+A4 - - - - - - - G3+B3+D4 - - - - - - - C4+E4+G4 - - - - - - - A3+C4+E4 - - - - - - - D4+F#4+A4 - - - - - - -',
     lead: 'G4 - B4 D5 - B4 C5 - A4 - - . E5 - D5 - C5 - B4 - A4 - B4 - G4 - - - . . . . ' +
           'G4 - B4 D5 - B4 E5 - D5 - - . G5 - F#5 - E5 - D5 - C5 - B4 - A4 - - - G4 - - .',
     bass: 'G2 . . G2 D3 . . . C3 . . C3 G2 . . . E2 . . E2 B2 . . . D3 . . D3 A2 . . . ' +
@@ -697,6 +703,8 @@ export const TRACKS = {
   },
   capsule: {
     bpm: 140,
+    inst: { lead: 'lead', pad: 'organ' },
+    pad: 'A3+C4+E4 - - - - - - - G3+B3+D4 - - - - - - - F3+A3+C4 - - - - - - - E3+G#3+B3 - - - - - - -',
     lead: 'A4 C5 E5 A5 E5 C5 A4 C5 G4 B4 D5 G5 D5 B4 G4 B4 F4 A4 C5 F5 C5 A4 F4 A4 E4 G#4 B4 E5 B4 G#4 E4 - ' +
           'A5 - E5 - C6 - B5 A5 G5 - D5 - B5 - A5 G5 F5 - C5 - A5 - G5 F5 E5 - - - . . . .',
     bass: 'A2 A2 . A2 A3 . A2 . G2 G2 . G2 G3 . G2 . F2 F2 . F2 F3 . F2 . E2 E2 . E2 E3 . E2 .',
@@ -704,6 +712,8 @@ export const TRACKS = {
   },
   karin: {
     bpm: 84,
+    inst: { lead: 'flute', pad: 'strings' },
+    pad: 'D4+F4+A4 - - - - - - - - - - - - - - - C4+E4+G4 - - - - - - - D4+F4+A4 - - - - - - -',
     lead: 'D5 - - - A4 - - - F5 - E5 - D5 - - - C5 - - - A4 - - - D5 - - - - - . . ' +
           'D5 - - - A4 - - - G5 - F5 - E5 - - - F5 - E5 - C5 - - - D5 - - - - - . .',
     bass: 'D3 - - - A2 - - - D3 - - - A2 - - - C3 - - - G2 - - - D3 - - - A2 - - -',
@@ -711,16 +721,61 @@ export const TRACKS = {
   },
   batalla: {
     bpm: 164,
+    inst: { lead: 'brass' },
     lead: 'E5 E5 . E5 . C5 E5 . G5 - - . G4 - - . C5 - . G4 - . E4 - . A4 . B4 . A#4 A4 . ' +
-          'G4 E5 G5 A5 . F5 G5 . E5 . C5 D5 B4 - . . C5 - . G4 - . E4 - . A4 . B4 . C5 - - .',
+          'G4 E5 G5 A5 . F5 G5 . E5 . C5 D5 B4 - . . C5 - . G4 - . E4 - . A4 . B4 . C5 - .',
     bass: 'C3 C3 . C3 G2 G2 . G2 A2 A2 . A2 E2 E2 . E2 F2 F2 . F2 C3 C3 . C3 G2 G2 . G2 G2 G2 . .',
     drums: 'k h s h k k s h k h s h k k s s'
   },
   victoria: {
     bpm: 150,
+    inst: { lead: 'brass', pad: 'strings' },
+    pad: 'C4+E4+G4 - - - - - - - . . . . . . . .',
     once: true,
     lead: 'C5 E5 G5 C6 - - G5 C6 - - - - . . . .',
     bass: 'C3 . G2 . C3 . G2 . C3 - - - . . . .',
     drums: 'k . s . k . s . k . . . . . . .'
+  },
+  // ---------------------------------------------------------------- temas nuevos (FM)
+  // Melodías originales inspiradas en el ambiente de la serie (aventura heroica,
+  // pentatónica «oriental», villanos cómicos). Si se consiguen los derechos de la
+  // música original, basta con transcribirla aquí en el mismo formato.
+  titulo: {
+    bpm: 150,
+    inst: { lead: 'brass', pad: 'strings' },
+    lead: 'D5 - E5 - F#5 - A5 - - - B5 A5 F#5 - E5 - D5 - E5 - F#5 - A5 - D6 - - - B5 - A5 - ' +
+          'B5 - A5 - F#5 - E5 - - - D5 E5 F#5 - A5 - B5 - A5 - F#5 - E5 - D5 - - - - - . .',
+    pad: 'D4+F#4+A4 - - - - - - - G3+B3+D4 - - - - - - - A3+C#4+E4 - - - - - - - D4+F#4+A4 - - - - - - - B3+D4+F#4 - - - - - - - G3+B3+D4 - - - - - - - A3+C#4+E4 - - - - - - - D4+F#4+A4 - - - - - - -',
+    bass: 'D2 D3 D2 D3 D2 D3 D2 D3 G2 G3 G2 G3 G2 G3 G2 G3 A2 A3 A2 A3 A2 A3 A2 A3 D2 D3 D2 D3 D2 A2 B2 C#3 ' +
+          'B2 B3 B2 B3 B2 B3 B2 B3 G2 G3 G2 G3 G2 G3 G2 G3 A2 A3 A2 A3 A2 A3 A2 A3 D3 - D2 - D2 A2 D3 -',
+    drums: 'k . h . s . h k k . h . s . h . k . h . s . h k k . h . s s s s'
+  },
+  libro: {
+    bpm: 88,
+    inst: { lead: 'koto', pad: 'strings' },
+    lead: 'A4 - C5 - D5 - E5 - G5 - - - E5 - D5 - C5 - D5 - E5 - A5 - G5 - E5 - D5 - - - ' +
+          'E5 - D5 - C5 - A4 - G4 - A4 - C5 - D5 - E5 - - - D5 - C5 - A4 - - - - - . .',
+    pad: 'A3+C4+E4 - - - - - - - G3+B3+D4 - - - - - - - F3+A3+C4 - - - - - - - G3+B3+D4 - - - - - - - A3+C4+E4 - - - - - - - G3+B3+D4 - - - - - - - F3+A3+C4 - - - - - - - A3+C4+E4 - - - - - - -',
+    bass: 'A2 - - - A2 - E2 - G2 - - - G2 - D2 - F2 - - - F2 - C3 - G2 - - - G2 - B2 - ' +
+          'A2 - - - A2 - E2 - G2 - - - G2 - D2 - F2 - - - F2 - C3 - A2 - - - A2 - E2 -',
+    drums: 'k . . . h . . . s . . . h . . . k . . . h . . . s . . . h . h .'
+  },
+  pilaf: {
+    bpm: 116,
+    inst: { lead: 'brass' },
+    lead: 'E4 - . E4 G4 . F#4 . E4 - . B3 E4 - - . G4 - . G4 A#4 . A4 . G4 - . D4 G4 - - . ' +
+          'B4 - . A4 G4 . F#4 . E4 - . F#4 G4 - . . F#4 - . E4 D#4 . E4 . F#4 - . D#4 E4 - - .',
+    bass: 'E2 . B2 . E2 . B2 . E2 . B2 . E2 . B2 . G2 . D3 . G2 . D3 . G2 . D3 . B1 . B2 . ' +
+          'E2 . B2 . C3 . G2 . A2 . E2 . B1 . F#2 . B1 . F#2 . B1 . D#2 . E2 . B1 . E2 . . .',
+    drums: 'k . s . k . s . k . s . k . s s'
+  },
+  desierto: {
+    bpm: 100,
+    inst: { lead: 'flute', pad: 'strings' },
+    lead: 'E5 - F5 - G#5 - - - F5 - E5 - D5 - E5 - - - . . C5 - D5 - E5 - F5 - E5 - - - ' +
+          'B5 - A5 - G#5 - F5 - E5 - - - F5 - G#5 - A5 - - - G#5 - F5 - E5 - - - - - . .',
+    pad: 'E3+G#3+B3 - - - - - - - - - - - - - - - F3+A3+C4 - - - - - - - E3+G#3+B3 - - - - - - -',
+    bass: 'E2 - - - E2 - B2 - E2 - - - F2 - E2 -',
+    drums: 'k . . h s . h . k . k h s . h .'
   }
 }

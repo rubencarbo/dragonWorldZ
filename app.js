@@ -116,6 +116,7 @@ export const settings = reactive({
   comicFont: 'bangers', // tipo de letra de los bocadillos (ver COMIC_FONTS)
   textSize: 1, // escala del texto de los diálogos
   textSpeed: 28, // ms por letra (0 = instantáneo)
+  soundChip: 'fm', // 'fm' = AdLib/Sound Blaster (PC 90s) · 'chip' = consola 8 bits
   ...LS.get('settings', {}),
   update (patch) {
     Object.assign(this, patch)
@@ -132,6 +133,7 @@ export const COMIC_FONTS = {
 }
 function applySettings () {
   chiptune.setVolume(settings.music)
+  chiptune.setMode(settings.soundChip)
   i18n.lang = settings.lang
   const root = document.documentElement
   root.lang = settings.lang
@@ -504,7 +506,7 @@ const BattleHost = {
 const App = {
   components: { GlobeView, LocationView, SettingsView, AdminView, LibroView, DialogBox, BattleHost },
   template: `
-    <div v-if="!started" class="title-screen" @click="start">
+    <div v-if="!started" class="title-screen" @click="start" @pointerdown.once="titleMusic">
       <div class="logo">
         <span class="ball">★</span>
         <h1 v-if="settings.lang === 'ca'">BOLA<br><b>DE DRAC Z</b></h1>
@@ -560,7 +562,13 @@ const App = {
         ])
       }
     }
-    return { started, loading, start, route, game, settings, LANGS }
+    // el navegador solo deja sonar audio tras el primer toque: arranca el tema del título
+    function titleMusic () {
+      chiptune.setVolume(settings.music)
+      chiptune.resume()
+      chiptune.play('titulo')
+    }
+    return { started, loading, start, titleMusic, route, game, settings, LANGS }
   }
 }
 

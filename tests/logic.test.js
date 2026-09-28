@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { rpsWinner, tttWinner, tttAiMove, makeRhymeRound, rhymeKey, RHYMES, followSwaps, randomSwaps, makeQuizRounds, QUIZ, needleAt, inZone, makeDeck } from '../minijuegos.js'
 import { findPath, validateMission, visibleSpawns, isMissionAvailable, resolveInteraction } from '../motor.js'
-import { parsePattern, noteToFreq } from '../motor.js'
+import { parsePattern, noteToFreq, FM_INSTRUMENTS } from '../motor.js'
 import { SEED_MISSIONS } from '../mundos.js'
 import { MAPS, TILES } from '../mundos.js'
 import { CHARACTERS, PALETTE, FORMS } from '../personajes.js'
@@ -138,7 +138,15 @@ describe('datos', () => {
     for (const m of SEED_MISSIONS) expect(TRACKS[m.music]).toBeTruthy()
     for (const w of WORLDS) expect(TRACKS[w.music]).toBeTruthy()
     for (const map of Object.values(MAPS)) expect(TRACKS[map.music]).toBeTruthy()
-    for (const t of Object.values(TRACKS)) for (const e of parsePattern(t.lead)) if (e) expect(e.freq, e.token).toBeTruthy()
+    for (const t of Object.values(TRACKS)) {
+      for (const ch of ['lead', 'bass', 'pad']) for (const e of parsePattern(t[ch])) if (e) for (const f of e.freqs) expect(f, e.token).toBeTruthy()
+      // los canales encajan en compás: todos dividen la longitud del más largo
+      const lens = ['lead', 'bass', 'pad', 'drums'].map(ch => (t[ch] || '').trim().split(/\s+/).filter(Boolean).length).filter(Boolean)
+      const max = Math.max(...lens)
+      for (const n of lens) expect(max % n).toBe(0)
+      for (const i of Object.values(t.inst || {})) expect(FM_INSTRUMENTS[i], i).toBeTruthy()
+    }
+    expect(parsePattern('C4+E4+G4 - -')[0].freqs.length).toBe(3)
   })
 })
 

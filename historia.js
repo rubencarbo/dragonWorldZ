@@ -904,7 +904,7 @@ export const BOOKS = [{
       hero: 'yamcha',
       title: L('El bandido del desierto', 'El bandit del desert'),
       teaser: L('El lobo solitario del desierto tiene un punto débil: las chicas.', 'El llop solitari del desert té un punt feble: les noies.'),
-      music: 'batalla',
+      music: 'desierto',
       pages: [
         {
           scene: 'desierto',
@@ -1069,7 +1069,7 @@ export const BOOKS = [{
       hero: 'oolong',
       title: L('El deseo de Oolong', 'El desig de l\'Oolong'),
       teaser: L('El emperador Pilaf tiene las siete bolas. Solo un cerdito puede salvar el mundo.', 'L\'emperador Pilaf té les set boles. Només un porquet pot salvar el món.'),
-      music: 'batalla',
+      music: 'pilaf',
       pages: [
         {
           scene: 'castillo',

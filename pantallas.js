@@ -899,6 +899,12 @@ export const SettingsView = {
             <option :value="3">{{ t('Baja · 8 bits clásico') }}</option>
           </select>
         </label>
+        <label class="row">{{ t('Sonido') }}
+          <select :value="settings.soundChip" @change="settings.update({ soundChip: $event.target.value })">
+            <option value="fm">{{ t('🎹 AdLib FM (PC de los 90)') }}</option>
+            <option value="chip">{{ t('👾 Chiptune (consola 8 bits)') }}</option>
+          </select>
+        </label>
         <label class="row">{{ t('Música') }}
           <input type="range" min="0" max="1" step="0.1" :value="settings.music" @input="settings.update({ music: Number($event.target.value) })" />
         </label>
@@ -1944,7 +1950,7 @@ export const LibroView = {
         pageIndex.value = savedPage(chapter.value) < chapter.value.pages.length ? savedPage(chapter.value) : 0
         loadPage()
         chiptune.play(chapter.value.music)
-      } else chiptune.play('globo')
+      } else chiptune.play('libro')
       loop()
     })
     onBeforeUnmount(() => { clearTimeout(raf); clearInterval(iv); clearTimeout(fxTimer); if (game.battle?.onEnd) game.battle = null })

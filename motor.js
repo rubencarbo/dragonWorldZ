@@ -771,7 +771,8 @@ export function noteToFreq (note) {
   return 440 * Math.pow(2, (midi - 69) / 12)
 }
 
-// Convierte 'C5 - E5 .' en [{freq, len}, null, ...] (un evento por paso)
+// Convierte 'C5 - E5 .' en [{freq, len}, null, ...] (un evento por paso).
+// Acordes con '+': 'C4+E4+G4 - - -' (freqs con todas las notas)
 export function parsePattern (str = '') {
   const tokens = str.trim().split(/\s+/).filter(Boolean)
   const events = new Array(tokens.length).fill(null)
@@ -779,9 +780,27 @@ export function parsePattern (str = '') {
     if (t === '-' || t === '.') return
     let len = 1
     while (tokens[i + len] === '-') len++
-    events[i] = { token: t, freq: noteToFreq(t), len }
+    const freqs = t.split('+').map(noteToFreq)
+    events[i] = { token: t, freq: freqs[0], freqs, len }
   })
   return events
+}
+
+// ============================================================ SÍNTESIS FM (estilo AdLib / Sound Blaster)
+// Dos operadores como el chip OPL2 de los PC de los 90: un modulador (seno)
+// que hace vibrar la frecuencia del portador. mr = relación de frecuencia del
+// modulador, index = profundidad de modulación (brillo) al inicio y en sostenido.
+// Envolvente del volumen: a (ataque), d (caída), s (sostenido 0..1), r (relajación).
+export const FM_INSTRUMENTS = {
+  brass: { mr: 1, index: 2.6, indexSus: 1.3, a: 0.03, d: 0.18, s: 0.8, r: 0.08, vib: 0.006, vol: 0.9 },
+  lead: { mr: 1, index: 1.6, indexSus: 1.1, a: 0.01, d: 0.1, s: 0.85, r: 0.06, vib: 0.008, vol: 0.8 },
+  flute: { mr: 2, index: 0.7, indexSus: 0.4, a: 0.05, d: 0.1, s: 0.9, r: 0.08, vib: 0.01, vol: 0.8 },
+  koto: { mr: 3, index: 3, indexSus: 0, a: 0.002, d: 0.45, s: 0, r: 0.12, vol: 0.9 },
+  epiano: { mr: 14, index: 1.1, indexSus: 0, a: 0.004, d: 0.6, s: 0.25, r: 0.2, vol: 0.8 },
+  bell: { mr: 3.5, index: 2.2, indexSus: 0.2, a: 0.002, d: 0.9, s: 0.1, r: 0.3, vol: 0.6 },
+  bass: { mr: 1, index: 3.2, indexSus: 0.7, a: 0.004, d: 0.16, s: 0.6, r: 0.05, vol: 1.1 },
+  strings: { mr: 1, index: 1.1, indexSus: 0.9, a: 0.14, d: 0.2, s: 0.85, r: 0.25, vib: 0.004, vol: 0.45 },
+  organ: { mr: 2, index: 0.9, indexSus: 0.9, a: 0.02, d: 0.05, s: 0.95, r: 0.06, vol: 0.4 }
 }
 
 class Chiptune {
@@ -791,6 +810,15 @@ class Chiptune {
     this.volume = 0.5
     this.current = null
     this.timer = null
+    this.mode = 'fm' // 'fm' = AdLib (PC 90s) · 'chip' = consola 8 bits
+  }
+
+  setMode (mode) {
+    if (mode === this.mode) return
+    this.mode = mode
+    // reinicia la pista actual con el nuevo sonido
+    const id = this.current?.id
+    if (id) { this.stop(); this.play(id) }
   }
 
   ensure () {
@@ -831,9 +859,10 @@ class Chiptune {
     const channels = {
       lead: parsePattern(track.lead),
       bass: parsePattern(track.bass),
+      pad: parsePattern(track.pad),
       drums: (track.drums || '').trim().split(/\s+/)
     }
-    const steps = Math.max(channels.lead.length, channels.bass.length)
+    const steps = Math.max(channels.lead.length, channels.bass.length, channels.pad.length)
     const stepDur = 60 / track.bpm / 2
     this.current = { id: trackId, track, channels, steps, stepDur, step: 0, next: this.ctx.currentTime + 0.05 }
     this.timer = setInterval(() => this.schedule(), 25)
@@ -854,8 +883,17 @@ class Chiptune {
       const lead = c.channels.lead[i % c.channels.lead.length]
       const bass = c.channels.bass[i % c.channels.bass.length]
       const drum = c.channels.drums[i % c.channels.drums.length]
-      if (lead?.freq) this.tone('pulse', lead.freq, c.next, lead.len * c.stepDur, 0.22)
-      if (bass?.freq) this.tone('triangle', bass.freq, c.next, bass.len * c.stepDur, 0.4)
+      const pad = c.channels.pad.length ? c.channels.pad[i % c.channels.pad.length] : null
+      const inst = c.track.inst || {}
+      if (this.mode === 'fm') {
+        // AdLib: melodía, bajo y acordes con instrumentos FM
+        if (lead?.freq) this.fmNote(inst.lead || 'brass', lead.freq, c.next, lead.len * c.stepDur, 0.2)
+        if (bass?.freq) this.fmNote(inst.bass || 'bass', bass.freq, c.next, bass.len * c.stepDur, 0.24)
+        if (pad?.freqs) for (const f of pad.freqs) if (f) this.fmNote(inst.pad || 'strings', f, c.next, pad.len * c.stepDur, 0.16)
+      } else {
+        if (lead?.freq) this.tone('pulse', lead.freq, c.next, lead.len * c.stepDur, 0.22)
+        if (bass?.freq) this.tone('triangle', bass.freq, c.next, bass.len * c.stepDur, 0.4)
+      }
       if (drum && drum !== '.') this.drum(drum, c.next)
       c.step++
       c.next += c.stepDur
@@ -874,6 +912,45 @@ class Chiptune {
     osc.connect(g).connect(this.master)
     osc.start(t)
     osc.stop(t + dur + 0.01)
+  }
+
+  // Nota FM de 2 operadores (modulador → frecuencia del portador)
+  fmNote (instName, freq, t, dur, vol) {
+    const I = FM_INSTRUMENTS[instName] || FM_INSTRUMENTS.lead
+    const ctx = this.ctx
+    const car = ctx.createOscillator()
+    const mod = ctx.createOscillator()
+    const modGain = ctx.createGain()
+    const g = ctx.createGain()
+    car.frequency.value = freq
+    mod.frequency.value = freq * I.mr
+    // profundidad (Hz) = índice × frecuencia del modulador; cae hacia el sostenido
+    const depth = I.index * freq * I.mr
+    modGain.gain.setValueAtTime(depth, t)
+    modGain.gain.exponentialRampToValueAtTime(Math.max(0.01, I.indexSus * freq * I.mr), t + I.d + 0.01)
+    mod.connect(modGain).connect(car.frequency)
+    // envolvente de volumen (ADSR)
+    const v = vol * (I.vol ?? 1)
+    const end = t + Math.max(dur, I.a + 0.02)
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.linearRampToValueAtTime(v, t + I.a)
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0001, v * I.s), t + I.a + I.d)
+    g.gain.setValueAtTime(Math.max(0.0001, v * I.s), end)
+    g.gain.exponentialRampToValueAtTime(0.0001, end + I.r)
+    car.connect(g).connect(this.master)
+    // vibrato en notas largas (como el efecto «VIB» del OPL2)
+    let lfo
+    if (I.vib && dur > 0.3) {
+      lfo = ctx.createOscillator()
+      const lg = ctx.createGain()
+      lfo.frequency.value = 5.5
+      lg.gain.setValueAtTime(0, t)
+      lg.gain.linearRampToValueAtTime(freq * I.vib, t + 0.25)
+      lfo.connect(lg).connect(car.frequency)
+      lfo.start(t); lfo.stop(end + I.r + 0.02)
+    }
+    car.start(t); mod.start(t)
+    car.stop(end + I.r + 0.02); mod.stop(end + I.r + 0.02)
   }
 
   drum (kind, t) {
